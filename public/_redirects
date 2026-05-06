@@ -1,0 +1,3 @@
+# Cloudflare Pages: SPA フォールバック
+# /api/* は functions/api/ で自動処理されるため記述不要
+/*    /index.html   200
