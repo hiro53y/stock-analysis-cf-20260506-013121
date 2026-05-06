@@ -7,9 +7,10 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          charts: ['recharts'],
+        manualChunks: (id) => {
+          if (id.includes('recharts')) return 'charts'
+          if (id.includes('react')) return 'vendor'
+          return undefined
         },
       },
     },
