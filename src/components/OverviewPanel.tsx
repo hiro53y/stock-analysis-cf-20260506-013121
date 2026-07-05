@@ -8,17 +8,78 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { CAPITAL_GAINS_TAX_RATE, SAMPLE_BUDGET_YEN } from '../../shared/constants'
 import type { AnalysisResult } from '../../shared/types'
+import { formatCompactNumber } from '../../shared/utils'
 import { SummaryCards } from './SummaryCards'
 
 interface OverviewPanelProps {
   result: AnalysisResult
 }
 
+function InvestmentMemo({ result }: { result: AnalysisResult }) {
+  const latestClose =
+    result.priceSeries.at(-1)?.close ??
+    result.forecastSeries.filter((point) => typeof point.actual === 'number').at(-1)?.actual ??
+    0
+
+  if (!latestClose) return null
+
+  const shares = SAMPLE_BUDGET_YEN / latestClose
+  const target10pct = latestClose * 1.1
+  const grossProfit = SAMPLE_BUDGET_YEN * 0.1
+  const netProfit = grossProfit * (1 - CAPITAL_GAINS_TAX_RATE)
+  const sharesText = shares < 1 ? shares.toFixed(2) : formatCompactNumber(Math.floor(shares))
+
+  return (
+    <section className="panel memo-panel">
+      <div className="panel-heading compact">
+        <p className="eyebrow">投資メモ</p>
+        <h3>5万円で買った場合の目安</h3>
+      </div>
+      <div className="memo-grid">
+        <div className="memo-cell">
+          <p className="memo-label">5万円購入時</p>
+          <p className="memo-value">
+            {sharesText}
+            <small>株</small>
+          </p>
+        </div>
+        <div className="memo-cell">
+          <p className="memo-label">10%上昇時の目標株価</p>
+          <p className="memo-value">
+            {formatCompactNumber(target10pct)}
+            <small>円</small>
+          </p>
+        </div>
+        <div className="memo-cell">
+          <p className="memo-label">税引前利益目安</p>
+          <p className="memo-value val-positive">
+            {formatCompactNumber(grossProfit)}
+            <small>円</small>
+          </p>
+        </div>
+        <div className="memo-cell">
+          <p className="memo-label">税引後利益目安</p>
+          <p className="memo-value val-positive">
+            {formatCompactNumber(netProfit)}
+            <small>円</small>
+          </p>
+        </div>
+      </div>
+      <p className="memo-note">
+        ※ 税率 {(CAPITAL_GAINS_TAX_RATE * 100).toFixed(3)}%（上場株式の譲渡益）で概算。手数料等は含みません。
+      </p>
+    </section>
+  )
+}
+
 export function OverviewPanel({ result }: OverviewPanelProps) {
   return (
     <div className="tab-stack">
       <SummaryCards cards={result.summaryCards} />
+
+      <InvestmentMemo result={result} />
 
       <div className="chart-grid">
         <section className="panel chart-panel">
@@ -42,7 +103,7 @@ export function OverviewPanel({ result }: OverviewPanelProps) {
         <section className="panel chart-panel">
           <div className="panel-heading compact">
             <p className="eyebrow">予測チャート</p>
-            <h3>{result.companyName}</h3>
+            <h3>5営業日先まで</h3>
           </div>
           <div className="chart-shell">
             <ResponsiveContainer width="100%" height={260}>

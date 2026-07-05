@@ -153,3 +153,57 @@ export interface AnalysisStatusResponse {
   result?: AnalysisResult
   error?: string
 }
+
+// ──────────────────────────────────────────
+// 候補抽出（登録日本株から短期売買候補を整理）
+// ──────────────────────────────────────────
+export type CandidateCategory = 'dip' | 'rebound' | 'danger' | 'skip'
+export type RiskBand = 'low' | 'mid' | 'high'
+
+export interface WatchlistEntry {
+  code: string
+  name: string
+  sector: string
+}
+
+export interface CandidateItem {
+  rank: number
+  code: string
+  name: string
+  sector?: string
+  category: CandidateCategory
+  categoryLabel: string
+  close: number
+  return1d: number
+  return5d: number
+  return20d: number
+  reboundScore: number
+  downtrendRisk: number
+  riskBand: RiskBand
+  sharesFor50k: number
+  target10pct: number
+  reasons: string[]
+  cautions: string[]
+}
+
+export interface CandidateCounts {
+  dip: number
+  rebound: number
+  danger: number
+  skip: number
+}
+
+export interface CandidatesResponse {
+  generatedAt: string
+  registeredCount: number
+  counts: CandidateCounts
+  candidates: CandidateItem[]
+}
+
+export interface MarketNewsItem {
+  id: string
+  title: string
+  summary: string
+  time: string
+  tag?: string
+}

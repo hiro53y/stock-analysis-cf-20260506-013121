@@ -1,4 +1,12 @@
-import type { AnalysisRequestPayload, FinalSignal, ModelId } from './types'
+import type {
+  AnalysisRequestPayload,
+  CandidateCategory,
+  FinalSignal,
+  MarketNewsItem,
+  ModelId,
+  RiskBand,
+  WatchlistEntry,
+} from './types'
 
 export const APP_NAME = '株式意思決定支援アプリ'
 export const CACHE_VERSION = 'cf-2026-05-v1'
@@ -32,6 +40,68 @@ export const SIGNAL_LABELS: Record<FinalSignal, string> = {
   SELL: '売り',
   UNKNOWN: '判定不能',
 }
+
+// ──────────────────────────────────────────
+// 候補抽出（登録日本株ユニバース）
+// ──────────────────────────────────────────
+export const CAPITAL_GAINS_TAX_RATE = 0.20315 // 日本の上場株式譲渡益課税
+export const SAMPLE_BUDGET_YEN = 50000 // 5万円購入時の概算に使用
+
+export const DEFAULT_JP_WATCHLIST: WatchlistEntry[] = [
+  { code: '9983.T', name: 'ファーストリテイリング', sector: '小売' },
+  { code: '7203.T', name: 'トヨタ自動車', sector: '自動車' },
+  { code: '8306.T', name: '三菱UFJフィナンシャル・グループ', sector: '銀行' },
+  { code: '6758.T', name: 'ソニーグループ', sector: '電気機器' },
+  { code: '6501.T', name: '日立製作所', sector: '電気機器' },
+  { code: '9984.T', name: 'ソフトバンクグループ', sector: '情報・通信' },
+  { code: '8035.T', name: '東京エレクトロン', sector: '電気機器' },
+  { code: '6098.T', name: 'リクルートホールディングス', sector: 'サービス' },
+  { code: '4063.T', name: '信越化学工業', sector: '化学' },
+  { code: '8058.T', name: '三菱商事', sector: '卸売' },
+  { code: '6902.T', name: 'デンソー', sector: '輸送用機器' },
+  { code: '5803.T', name: 'フジクラ', sector: '非鉄金属' },
+]
+
+export const CANDIDATE_CATEGORY_LABELS: Record<CandidateCategory, string> = {
+  dip: '押し目候補',
+  rebound: '反発候補',
+  danger: '危険な下落',
+  skip: '見送り',
+}
+
+export const RISK_BAND_LABELS: Record<RiskBand, string> = {
+  low: '低',
+  mid: '中',
+  high: '高',
+}
+
+export const CANDIDATE_DISCLAIMER =
+  'この候補は投資助言ではありません。売買判断の前に、決算、適時開示、出来高、地合い、損切り条件を確認してください。'
+
+// 市場ニュースは外部フィードを持たないため静的サンプルを表示
+export const SAMPLE_MARKET_NEWS: MarketNewsItem[] = [
+  {
+    id: 'news-1',
+    title: '日経平均続伸、銀行株しっかり',
+    summary: '米雇用統計を前に買い優勢。金融株が指数を下支え。',
+    time: '15:25',
+    tag: 'market',
+  },
+  {
+    id: 'news-2',
+    title: '円相場は小幅な動き',
+    summary: '対ドルでは一進一退。引き続き米金利動向に注目。',
+    time: '14:40',
+    tag: 'fx',
+  },
+  {
+    id: 'news-3',
+    title: '半導体関連は一部軟調',
+    summary: '米ハイテク株安を受け、売りが優勢となる場面も。',
+    time: '13:55',
+    tag: 'sector',
+  },
+]
 
 export const FEATURE_LABELS: Record<string, string> = {
   return1d: '1日リターン',

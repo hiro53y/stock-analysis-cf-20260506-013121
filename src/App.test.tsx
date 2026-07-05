@@ -19,11 +19,19 @@ const apiMocks = vi.hoisted(() => ({
   loadLastResult: vi.fn(),
   persistLastResult: vi.fn(),
   startAnalysis: vi.fn(),
+  fetchCandidates: vi.fn(),
+  loadWatchlist: vi.fn(),
+  saveWatchlist: vi.fn(),
 }))
 
 vi.mock('./lib/api', () => apiMocks)
 
 import App from './App'
+
+// 個別株調査タブ（分析フォーム）へ切り替える
+function gotoResearch(): void {
+  fireEvent.click(screen.getByRole('button', { name: '個別株調査' }))
+}
 
 function setNavigatorOnline(value: boolean) {
   Object.defineProperty(window.navigator, 'onLine', {
@@ -124,6 +132,14 @@ describe('App', () => {
       status: 'queued',
       cached: false,
     })
+    apiMocks.fetchCandidates.mockResolvedValue({
+      generatedAt: '2026-04-16T06:55:00.000Z',
+      registeredCount: 0,
+      counts: { dip: 0, rebound: 0, danger: 0, skip: 0 },
+      candidates: [],
+    })
+    apiMocks.loadWatchlist.mockReturnValue([])
+    apiMocks.saveWatchlist.mockImplementation(() => undefined)
     apiMocks.fetchAnalysisStatus.mockReset()
   })
 
@@ -133,10 +149,16 @@ describe('App', () => {
     vi.useRealTimers()
   })
 
-  it('初期メッセージを表示する', () => {
+  it('初期表示は候補抽出タブで、個別株調査へ切替できる', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { name: '株式意思決定支援アプリ' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '候補抽出' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '個別株調査' })).toBeInTheDocument()
+    // 初期は候補抽出タブなので分析フォームは未表示
+    expect(screen.queryByRole('button', { name: '分析を実行' })).not.toBeInTheDocument()
+
+    gotoResearch()
     expect(screen.getByRole('button', { name: '分析を実行' })).toBeInTheDocument()
   })
 
@@ -155,6 +177,7 @@ describe('App', () => {
       })
 
     render(<App />)
+    gotoResearch()
 
     await user.click(screen.getByRole('button', { name: '分析を実行' }))
 
@@ -192,6 +215,7 @@ describe('App', () => {
     apiMocks.loadLastResult.mockReturnValue(savedResult)
 
     render(<App />)
+    gotoResearch()
 
     expect(screen.getByRole('heading', { name: '株式意思決定支援アプリ' })).toBeInTheDocument()
     expect(screen.getByDisplayValue('5451')).toBeInTheDocument()
@@ -207,6 +231,7 @@ describe('App', () => {
     )
 
     render(<App />)
+    gotoResearch()
 
     await user.click(screen.getByRole('button', { name: '分析を実行' }))
 
@@ -223,6 +248,7 @@ describe('App', () => {
     apiMocks.loadLastResult.mockReturnValue(createResult())
 
     render(<App />)
+    gotoResearch()
 
     expect(screen.queryByText('直近成功結果を表示中')).not.toBeInTheDocument()
   })
@@ -231,6 +257,7 @@ describe('App', () => {
     apiMocks.loadLastResult.mockReturnValue(createResult())
 
     render(<App />)
+    gotoResearch()
 
     act(() => {
       setNavigatorOnline(false)
@@ -265,6 +292,7 @@ describe('App', () => {
     })
 
     render(<App />)
+    gotoResearch()
 
     expect(screen.getByText('保存済み結果株式会社')).toBeInTheDocument()
 
@@ -286,6 +314,7 @@ describe('App', () => {
     })
 
     render(<App />)
+    gotoResearch()
 
     await user.click(screen.getByRole('button', { name: '分析を実行' }))
 
@@ -320,6 +349,7 @@ describe('App', () => {
     })
 
     render(<App />)
+    gotoResearch()
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: '分析を実行' }))
@@ -342,6 +372,7 @@ describe('App', () => {
     })
 
     render(<App />)
+    gotoResearch()
 
     await user.click(screen.getByRole('button', { name: '分析を実行' }))
 

@@ -63,6 +63,66 @@ function sanitizeRows(rawRows: Array<OHLCVRow | null>): OHLCVRow[] {
   return rawRows.filter((row): row is OHLCVRow => row !== null)
 }
 
+function toFiniteCloses(closesRaw: unknown): number[] {
+  if (!Array.isArray(closesRaw)) return []
+  return closesRaw.filter(
+    (value): value is number => typeof value === 'number' && Number.isFinite(value),
+  )
+}
+
+/**
+ * Yahoo Finance の spark エンドポイントで複数銘柄の終値を一括取得する。
+ * 1 リクエストでウォッチリスト全体をまかなえるため、候補抽出のレート制限に優しい。
+ * 返り値は 正規化シンボル → 古い→新しい順の終値配列。
+ *
+ * spark のレスポンスはシンボルをキーにしたフラットなマップ
+ * （例: `{ "7203.T": { close: [...], symbol: "7203.T" } }`）で返る。
+ * 念のため、旧来の `spark.result[].response[]` 形式もフォールバックで解釈する。
+ */
+export async function getSparkBatch(
+  symbols: string[],
+  ttlSeconds: number = MARKET_DATA_CACHE_TTL_SECONDS,
+): Promise<Map<string, number[]>> {
+  const result = new Map<string, number[]>()
+  const unique = Array.from(new Set(symbols.map((symbol) => symbol.trim()).filter(Boolean)))
+  if (unique.length === 0) return result
+
+  const sparkUrl = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${encodeURIComponent(
+    unique.join(','),
+  )}&range=3mo&interval=1d`
+
+  const payload = (await fetchCachedJson(sparkUrl, ttlSeconds)) as Record<string, unknown> & {
+    spark?: {
+      result?: Array<{
+        symbol?: string
+        response?: Array<{ indicators?: { quote?: Array<{ close?: unknown }> } }>
+      }>
+    }
+  }
+
+  // 主フォーマット: シンボルをキーにしたフラットマップ
+  for (const [key, value] of Object.entries(payload)) {
+    if (key === 'spark' || !value || typeof value !== 'object') continue
+    const entry = value as { close?: unknown; symbol?: string }
+    const closes = toFiniteCloses(entry.close)
+    if (closes.length > 0) {
+      result.set(entry.symbol ?? key, closes)
+    }
+  }
+
+  // フォールバック: 旧 spark.result[].response[] 形式
+  if (result.size === 0) {
+    for (const entry of payload.spark?.result ?? []) {
+      const closes = toFiniteCloses(entry.response?.[0]?.indicators?.quote?.[0]?.close)
+      if (entry.symbol && closes.length > 0) {
+        result.set(entry.symbol, closes)
+      }
+    }
+  }
+
+  return result
+}
+
 async function fetchCompanyName(normalizedSymbol: string): Promise<string> {
   try {
     const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(normalizedSymbol)}`

@@ -411,6 +411,550 @@ select {
   background: rgba(255, 255, 255, 0.16);
 }
 
+/* ──────────────────────────────────────────
+   共通カラーユーティリティ（値の強調用）
+   ────────────────────────────────────────── */
+.val-positive {
+  color: var(--positive);
+}
+
+.val-accent {
+  color: #7fe0dc;
+}
+
+.val-danger {
+  color: #ffb4aa;
+}
+
+.delta-up {
+  color: var(--positive);
+}
+
+.delta-down {
+  color: #ffb4aa;
+}
+
+.delta-flat {
+  color: var(--muted);
+}
+
+/* ──────────────────────────────────────────
+   大タブ（候補抽出 / 個別株調査）
+   ────────────────────────────────────────── */
+.main-tab-bar {
+  display: flex;
+  gap: 8px;
+  background: rgba(4, 12, 16, 0.5);
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  padding: 6px;
+  margin-bottom: 12px;
+}
+
+.main-tab {
+  flex: 1;
+  border: 0;
+  border-radius: 14px;
+  padding: 13px 12px;
+  cursor: pointer;
+  color: #f4efe6;
+  background: transparent;
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+.main-tab.active {
+  background: linear-gradient(135deg, var(--accent), #1f7f83);
+  color: #042027;
+  font-weight: 700;
+}
+
+.tab-description {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* ──────────────────────────────────────────
+   候補抽出タブ
+   ────────────────────────────────────────── */
+.candidates-tab {
+  display: grid;
+  gap: 14px;
+}
+
+.candidate-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.summary-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.summary-title {
+  margin: 0;
+  font-size: 1.15rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-title .flag {
+  color: var(--accent);
+}
+
+.refresh-button {
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4efe6;
+  border-radius: 12px;
+  padding: 9px 14px;
+  cursor: pointer;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.refresh-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.summary-stats {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.stat-cell {
+  display: grid;
+  gap: 4px;
+  padding: 12px 8px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.stat-label {
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.stat-value {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.summary-updated {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-align: right;
+}
+
+/* 絞り込みチップ */
+.chip-bar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: #f4efe6;
+  border-radius: 999px;
+  padding: 9px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+.chip-count {
+  min-width: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 0.78rem;
+  text-align: center;
+}
+
+.chip.active {
+  border-color: transparent;
+  font-weight: 700;
+}
+
+.chip-dip.active {
+  background: rgba(41, 161, 156, 0.9);
+  color: #042027;
+}
+
+.chip-rebound.active {
+  background: rgba(120, 215, 174, 0.9);
+  color: #042027;
+}
+
+.chip-danger.active {
+  background: rgba(213, 107, 102, 0.9);
+  color: #2a0f0d;
+}
+
+.chip-skip.active {
+  background: rgba(255, 255, 255, 0.85);
+  color: #0d1b22;
+}
+
+.chip.active .chip-count {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+/* 候補カード */
+.candidate-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-left: 4px solid var(--accent);
+  border-radius: 20px;
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.16);
+}
+
+.candidate-card.cat-dip {
+  border-left-color: var(--accent);
+}
+
+.candidate-card.cat-rebound {
+  border-left-color: var(--positive);
+}
+
+.candidate-card.cat-danger {
+  border-left-color: var(--danger);
+  background: linear-gradient(180deg, rgba(213, 107, 102, 0.12), var(--panel) 40%);
+}
+
+.candidate-card.cat-skip {
+  border-left-color: rgba(255, 255, 255, 0.25);
+}
+
+.candidate-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.candidate-rank {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.1);
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.candidate-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.candidate-name {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.candidate-code {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.candidate-tag {
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.tag-dip {
+  background: rgba(41, 161, 156, 0.18);
+  color: #7fe0dc;
+}
+
+.tag-rebound {
+  background: rgba(120, 215, 174, 0.18);
+  color: var(--positive);
+}
+
+.tag-danger {
+  background: rgba(213, 107, 102, 0.2);
+  color: #ffb4aa;
+}
+
+.tag-skip {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+}
+
+.candidate-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.price-value {
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.price-value small,
+.metric-value small,
+.memo-value small {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+.delta-row {
+  display: flex;
+  gap: 12px;
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.delta-row b {
+  font-weight: 700;
+}
+
+.candidate-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.candidate-metric {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 10px 8px;
+  text-align: center;
+}
+
+.metric-label {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.metric-value {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.risk-band {
+  margin-left: 6px;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 6px;
+  vertical-align: middle;
+}
+
+.band-low {
+  background: rgba(120, 215, 174, 0.18);
+  color: var(--positive);
+}
+
+.band-mid {
+  background: rgba(242, 125, 66, 0.18);
+  color: #ffc39c;
+}
+
+.band-high {
+  background: rgba(213, 107, 102, 0.22);
+  color: #ffb4aa;
+}
+
+.candidate-notes {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  font-size: 0.84rem;
+  color: #d9d2c4;
+}
+
+.candidate-notes.cautions {
+  color: var(--muted);
+}
+
+.candidate-notes.cautions.danger {
+  color: #ffc0bc;
+}
+
+.candidate-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.analyze-button {
+  margin-top: 0;
+}
+
+.watch-button {
+  text-align: center;
+}
+
+.watch-button.watched {
+  border: 1px solid rgba(41, 161, 156, 0.6);
+  background: rgba(41, 161, 156, 0.14);
+  color: #7fe0dc;
+}
+
+.skip-flag {
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 16px;
+  padding: 13px 12px;
+}
+
+/* 市場ニュース */
+.news-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.news-more {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.news-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.news-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.news-item:last-child {
+  border-bottom: 0;
+}
+
+.news-title {
+  margin: 0 0 3px;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.news-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.news-time {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.candidate-disclaimer {
+  text-align: center;
+  font-size: 0.82rem;
+}
+
+/* ──────────────────────────────────────────
+   個別株調査タブ：分析対象サマリー / 投資メモ
+   ────────────────────────────────────────── */
+.target-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.target-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.target-symbol {
+  margin: 0 0 2px;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.target-name {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.target-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.memo-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.memo-cell {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.memo-label {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.memo-value {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.memo-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 @media (min-width: 960px) {
   .layout-grid {
     grid-template-columns: 360px minmax(0, 1fr);
@@ -423,5 +967,9 @@ select {
 
   .chart-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .memo-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }

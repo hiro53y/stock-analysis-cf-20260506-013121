@@ -1,14 +1,16 @@
-import { DEFAULT_ANALYSIS_INPUT } from '../../shared/constants'
+import { DEFAULT_ANALYSIS_INPUT, DEFAULT_JP_WATCHLIST } from '../../shared/constants'
 import type {
   AnalysisCreateResponse,
   AnalysisRequestPayload,
   AnalysisResult,
   AnalysisStatusResponse,
+  CandidatesResponse,
   MarketDataResponse,
 } from '../../shared/types'
 import { z } from 'zod'
 
 const LAST_RESULT_KEY = 'stock-analysis:last-result'
+const WATCHLIST_KEY = 'stock-analysis:watchlist'
 const modelIdSchema = z.enum(['baseline', 'ar_trend', 'direction_classifier', 'return_regressor'])
 const toneSchema = z.enum(['positive', 'negative', 'neutral', 'accent'])
 const directionSchema = z.enum(['positive', 'negative', 'neutral'])
@@ -222,6 +224,71 @@ export async function fetchAnalysisStatus(
   return requestJson<AnalysisStatusResponse>(
     `/api/analyses/${encodeURIComponent(normalizedAnalysisId)}?${query.toString()}`,
   )
+}
+
+const candidateCategorySchema = z.enum(['dip', 'rebound', 'danger', 'skip'])
+const riskBandSchema = z.enum(['low', 'mid', 'high'])
+const candidatesResponseSchema = z.object({
+  generatedAt: z.string(),
+  registeredCount: z.number(),
+  counts: z.object({
+    dip: z.number(),
+    rebound: z.number(),
+    danger: z.number(),
+    skip: z.number(),
+  }),
+  candidates: z.array(
+    z.object({
+      rank: z.number(),
+      code: z.string(),
+      name: z.string(),
+      sector: z.string().optional(),
+      category: candidateCategorySchema,
+      categoryLabel: z.string(),
+      close: z.number(),
+      return1d: z.number(),
+      return5d: z.number(),
+      return20d: z.number(),
+      reboundScore: z.number(),
+      downtrendRisk: z.number(),
+      riskBand: riskBandSchema,
+      sharesFor50k: z.number(),
+      target10pct: z.number(),
+      reasons: z.array(z.string()),
+      cautions: z.array(z.string()),
+    }),
+  ),
+})
+
+export async function fetchCandidates(symbols?: string[]): Promise<CandidatesResponse> {
+  const query = symbols && symbols.length > 0 ? `?symbols=${encodeURIComponent(symbols.join(','))}` : ''
+  const raw = await requestJson<unknown>(`/api/candidates${query}`)
+  const parsed = candidatesResponseSchema.safeParse(raw)
+  if (!parsed.success) {
+    console.error('fetchCandidates response schema mismatch', parsed.error.issues)
+    throw new ApiError('候補レスポンスの形式が不正です。', 500)
+  }
+  return parsed.data
+}
+
+export function loadWatchlist(): string[] {
+  try {
+    const raw = localStorage.getItem(WATCHLIST_KEY)
+    if (!raw) return DEFAULT_JP_WATCHLIST.map((entry) => entry.code)
+    const parsed = z.array(z.string()).safeParse(JSON.parse(raw))
+    if (!parsed.success) return DEFAULT_JP_WATCHLIST.map((entry) => entry.code)
+    return parsed.data
+  } catch {
+    return DEFAULT_JP_WATCHLIST.map((entry) => entry.code)
+  }
+}
+
+export function saveWatchlist(codes: string[]): void {
+  try {
+    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(codes))
+  } catch {
+    // Storage 不可のブラウザでは監視状態を永続化しない
+  }
 }
 
 export async function fetchMarketPreview(
