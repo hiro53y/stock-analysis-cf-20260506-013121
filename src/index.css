@@ -955,6 +955,211 @@ select {
   font-size: 0.78rem;
 }
 
+.chip-all.active {
+  background: linear-gradient(135deg, var(--accent), #1f7f83);
+  color: #042027;
+}
+
+/* 登録解除ボタン */
+.unregister-button {
+  text-align: center;
+}
+
+.target-actions {
+  margin-top: 4px;
+}
+
+.target-actions .primary-button,
+.target-actions .secondary-button {
+  width: 100%;
+  margin-top: 0;
+}
+
+/* ──────────────────────────────────────────
+   会社名検索（サジェスト）
+   ────────────────────────────────────────── */
+.symbol-search {
+  position: relative;
+}
+
+.yahoo-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: #7fe0dc;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.yahoo-link:hover {
+  text-decoration: underline;
+}
+
+.search-suggestions {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 6px;
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  background: #0e2029;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.search-status {
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.search-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: #f4efe6;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.search-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.search-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.search-symbol {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+/* ──────────────────────────────────────────
+   使用方法タブ（凡例）
+   ────────────────────────────────────────── */
+.guide-tab {
+  display: grid;
+  gap: 14px;
+}
+
+.guide-list {
+  display: grid;
+  gap: 12px;
+}
+
+.guide-row {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.guide-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.guide-term {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.guide-desc {
+  color: #d9d2c4;
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.guide-chip {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--panel-border);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.guide-metric {
+  display: inline-block;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.guide-buttons,
+.guide-signals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mini-button {
+  display: inline-block;
+  padding: 7px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.mini-button.primary {
+  background: linear-gradient(135deg, var(--accent), #1f7f83);
+  color: #042027;
+}
+
+.mini-button.secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f4efe6;
+}
+
+.mini-button.ghost {
+  background: rgba(255, 255, 255, 0.06);
+  color: #f4efe6;
+  border: 1px solid var(--panel-border);
+}
+
+.signal-pill {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.signal-pill.buy {
+  background: rgba(120, 215, 174, 0.18);
+  color: var(--positive);
+}
+
+.signal-pill.watch {
+  background: rgba(242, 125, 66, 0.18);
+  color: #ffc39c;
+}
+
+.signal-pill.sell {
+  background: rgba(213, 107, 102, 0.2);
+  color: #ffb4aa;
+}
+
 @media (min-width: 960px) {
   .layout-grid {
     grid-template-columns: 360px minmax(0, 1fr);

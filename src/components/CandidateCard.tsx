@@ -4,9 +4,8 @@ import { formatCompactNumber, formatReturn } from '../../shared/utils'
 
 interface CandidateCardProps {
   item: CandidateItem
-  isWatched: boolean
   onAnalyze: (code: string) => void
-  onToggleWatch: (code: string) => void
+  onUnregister: (code: string) => void
 }
 
 function returnClass(value: number): string {
@@ -20,10 +19,8 @@ function formatShares(value: number): string {
   return value < 1 ? value.toFixed(2) : formatCompactNumber(Math.floor(value))
 }
 
-export function CandidateCard({ item, isWatched, onAnalyze, onToggleWatch }: CandidateCardProps) {
+export function CandidateCard({ item, onAnalyze, onUnregister }: CandidateCardProps) {
   const isNegativeCard = item.category === 'danger'
-  const isSkip = item.category === 'skip'
-  const showWatchButton = !isNegativeCard && !isSkip
 
   return (
     <article className={`candidate-card cat-${item.category}`}>
@@ -102,17 +99,13 @@ export function CandidateCard({ item, isWatched, onAnalyze, onToggleWatch }: Can
         <button type="button" className="primary-button analyze-button" onClick={() => onAnalyze(item.code)}>
           分析
         </button>
-        {showWatchButton ? (
-          <button
-            type="button"
-            className={`secondary-button watch-button${isWatched ? ' watched' : ''}`}
-            onClick={() => onToggleWatch(item.code)}
-          >
-            {isWatched ? '監視中' : '監視に追加'}
-          </button>
-        ) : (
-          <span className="skip-flag">見送り</span>
-        )}
+        <button
+          type="button"
+          className="secondary-button unregister-button"
+          onClick={() => onUnregister(item.code)}
+        >
+          登録解除
+        </button>
       </div>
     </article>
   )

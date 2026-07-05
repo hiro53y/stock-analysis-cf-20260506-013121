@@ -123,6 +123,57 @@ export async function getSparkBatch(
   return result
 }
 
+export interface SymbolSearchHit {
+  symbol: string
+  name: string
+  exchange: string
+}
+
+/**
+ * Yahoo Finance の autocomplete エンドポイントで会社名から銘柄を検索する。
+ * v6 autocomplete は日本語クエリ（かな・漢字）に対応し、日本語の社名も返す。
+ * 株式（type === 'S'）のみを対象にし、日本株（.T）を優先的に前へ並べる。
+ */
+export async function searchSymbols(
+  query: string,
+  ttlSeconds: number = MARKET_DATA_CACHE_TTL_SECONDS,
+): Promise<SymbolSearchHit[]> {
+  const trimmed = query.trim()
+  if (!trimmed) return []
+
+  const searchUrl = `https://query2.finance.yahoo.com/v6/finance/autocomplete?query=${encodeURIComponent(
+    trimmed,
+  )}&lang=ja&region=JP`
+
+  const payload = (await fetchCachedJson(searchUrl, ttlSeconds)) as {
+    ResultSet?: {
+      Result?: Array<{
+        symbol?: string
+        name?: string
+        type?: string
+        exch?: string
+        exchDisp?: string
+      }>
+    }
+  }
+
+  const hits: SymbolSearchHit[] = []
+  for (const item of payload.ResultSet?.Result ?? []) {
+    if (item.type && item.type.toUpperCase() !== 'S') continue
+    const symbol = item.symbol?.trim()
+    if (!symbol) continue
+    hits.push({
+      symbol,
+      name: item.name ?? symbol,
+      exchange: item.exchDisp ?? item.exch ?? '',
+    })
+  }
+
+  // 日本株（.T）を優先
+  hits.sort((a, b) => Number(b.symbol.endsWith('.T')) - Number(a.symbol.endsWith('.T')))
+  return hits
+}
+
 async function fetchCompanyName(normalizedSymbol: string): Promise<string> {
   try {
     const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(normalizedSymbol)}`

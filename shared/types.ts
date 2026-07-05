@@ -207,3 +207,14 @@ export interface MarketNewsItem {
   time: string
   tag?: string
 }
+
+export interface SymbolSearchHit {
+  symbol: string
+  name: string
+  exchange: string
+}
+
+export interface SymbolSearchResponse {
+  query: string
+  results: SymbolSearchHit[]
+}

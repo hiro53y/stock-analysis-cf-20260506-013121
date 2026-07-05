@@ -6,11 +6,14 @@ import type {
   AnalysisStatusResponse,
   CandidatesResponse,
   MarketDataResponse,
+  SymbolSearchResponse,
+  WatchlistEntry,
 } from '../../shared/types'
 import { z } from 'zod'
 
 const LAST_RESULT_KEY = 'stock-analysis:last-result'
-const WATCHLIST_KEY = 'stock-analysis:watchlist'
+const REGISTRY_KEY = 'stock-analysis:registry'
+const LEGACY_WATCHLIST_KEY = 'stock-analysis:watchlist'
 const modelIdSchema = z.enum(['baseline', 'ar_trend', 'direction_classifier', 'return_regressor'])
 const toneSchema = z.enum(['positive', 'negative', 'neutral', 'accent'])
 const directionSchema = z.enum(['positive', 'negative', 'neutral'])
@@ -271,23 +274,76 @@ export async function fetchCandidates(symbols?: string[]): Promise<CandidatesRes
   return parsed.data
 }
 
-export function loadWatchlist(): string[] {
+const symbolSearchResponseSchema = z.object({
+  query: z.string(),
+  results: z.array(
+    z.object({
+      symbol: z.string(),
+      name: z.string(),
+      exchange: z.string(),
+    }),
+  ),
+})
+
+export async function fetchSymbolSearch(
+  query: string,
+  signal?: AbortSignal,
+): Promise<SymbolSearchResponse> {
+  const raw = await requestJson<unknown>(`/api/search?q=${encodeURIComponent(query)}`, { signal })
+  const parsed = symbolSearchResponseSchema.safeParse(raw)
+  if (!parsed.success) {
+    console.error('fetchSymbolSearch response schema mismatch', parsed.error.issues)
+    throw new ApiError('検索レスポンスの形式が不正です。', 500)
+  }
+  return parsed.data
+}
+
+const registryEntrySchema = z.object({
+  code: z.string(),
+  name: z.string(),
+  sector: z.string(),
+})
+
+function defaultRegistry(): WatchlistEntry[] {
+  return DEFAULT_JP_WATCHLIST.map((entry) => ({ ...entry }))
+}
+
+/** 登録銘柄（ユーザーが登録した銘柄）を読み込む。旧 string[] 形式からは移行する。 */
+export function loadRegistry(): WatchlistEntry[] {
   try {
-    const raw = localStorage.getItem(WATCHLIST_KEY)
-    if (!raw) return DEFAULT_JP_WATCHLIST.map((entry) => entry.code)
-    const parsed = z.array(z.string()).safeParse(JSON.parse(raw))
-    if (!parsed.success) return DEFAULT_JP_WATCHLIST.map((entry) => entry.code)
-    return parsed.data
+    const raw = localStorage.getItem(REGISTRY_KEY)
+    if (raw) {
+      const parsed = z.array(registryEntrySchema).safeParse(JSON.parse(raw))
+      if (parsed.success) return parsed.data
+      localStorage.removeItem(REGISTRY_KEY)
+    }
+
+    // 旧 string[] 形式（コードのみ）からの移行
+    const legacy = localStorage.getItem(LEGACY_WATCHLIST_KEY)
+    if (legacy) {
+      const parsedLegacy = z.array(z.string()).safeParse(JSON.parse(legacy))
+      if (parsedLegacy.success && parsedLegacy.data.length > 0) {
+        const byCode = new Map(DEFAULT_JP_WATCHLIST.map((entry) => [entry.code, entry]))
+        const migrated = parsedLegacy.data.map<WatchlistEntry>(
+          (code) => byCode.get(code) ?? { code, name: code, sector: '—' },
+        )
+        localStorage.removeItem(LEGACY_WATCHLIST_KEY)
+        saveRegistry(migrated)
+        return migrated
+      }
+    }
+
+    return defaultRegistry()
   } catch {
-    return DEFAULT_JP_WATCHLIST.map((entry) => entry.code)
+    return defaultRegistry()
   }
 }
 
-export function saveWatchlist(codes: string[]): void {
+export function saveRegistry(entries: WatchlistEntry[]): void {
   try {
-    localStorage.setItem(WATCHLIST_KEY, JSON.stringify(codes))
+    localStorage.setItem(REGISTRY_KEY, JSON.stringify(entries))
   } catch {
-    // Storage 不可のブラウザでは監視状態を永続化しない
+    // Storage 不可のブラウザでは登録状態を永続化しない
   }
 }
 

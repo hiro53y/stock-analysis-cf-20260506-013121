@@ -1,64 +1,105 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   CANDIDATE_CATEGORY_LABELS,
   CANDIDATE_DISCLAIMER,
   SAMPLE_MARKET_NEWS,
 } from '../../shared/constants'
-import type { CandidateCategory, CandidatesResponse } from '../../shared/types'
-import { fetchCandidates, loadWatchlist, saveWatchlist } from '../lib/api'
+import type {
+  CandidateCategory,
+  CandidateItem,
+  CandidatesResponse,
+  WatchlistEntry,
+} from '../../shared/types'
+import { fetchCandidates } from '../lib/api'
 import { CandidateCard } from './CandidateCard'
 import { MarketNews } from './MarketNews'
 
 interface CandidatesTabProps {
+  registry: WatchlistEntry[]
   onAnalyze: (code: string) => void
+  onUnregister: (code: string) => void
 }
 
-const FILTER_ORDER: CandidateCategory[] = ['dip', 'rebound', 'danger', 'skip']
+type FilterKey = 'all' | CandidateCategory
+
+const FILTER_ORDER: FilterKey[] = ['all', 'dip', 'rebound', 'danger', 'skip']
+
+function filterLabel(key: FilterKey): string {
+  return key === 'all' ? '登録銘柄' : CANDIDATE_CATEGORY_LABELS[key]
+}
 
 function formatTimestamp(iso: string): string {
   if (!iso) return '—'
   return iso.slice(0, 16).replace('T', ' ')
 }
 
-export function CandidatesTab({ onAnalyze }: CandidatesTabProps) {
+export function CandidatesTab({ registry, onAnalyze, onUnregister }: CandidatesTabProps) {
   const [data, setData] = useState<CandidatesResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState<CandidateCategory>('dip')
-  const [watched, setWatched] = useState<string[]>(() => loadWatchlist())
+  const [filter, setFilter] = useState<FilterKey>('all')
+
+  // 登録銘柄のコード集合（ソート結合）— 変化したときだけ再取得する
+  const codesKey = useMemo(
+    () => registry.map((entry) => entry.code).sort().join(','),
+    [registry],
+  )
 
   const loadCandidates = useCallback(async () => {
+    const codes = codesKey ? codesKey.split(',') : []
+    if (codes.length === 0) {
+      setData({
+        generatedAt: new Date().toISOString(),
+        registeredCount: 0,
+        counts: { dip: 0, rebound: 0, danger: 0, skip: 0 },
+        candidates: [],
+      })
+      setError(null)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     setError(null)
     try {
-      const response = await fetchCandidates()
+      const response = await fetchCandidates(codes)
       setData(response)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : '候補の取得に失敗しました。')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [codesKey])
 
   useEffect(() => {
-    // マウント時に候補を取得（データ取得のための正当な副作用）
+    // 登録銘柄が変わるたびに候補を取得（データ取得のための正当な副作用）
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadCandidates()
   }, [loadCandidates])
 
-  const toggleWatch = useCallback((code: string) => {
-    setWatched((current) => {
-      const next = current.includes(code)
-        ? current.filter((value) => value !== code)
-        : [...current, code]
-      saveWatchlist(next)
-      return next
+  // 登録銘柄の社名・業種でサーバー結果を上書き（ユーザー追加銘柄の表示を正しく）
+  const nameByCode = useMemo(
+    () => new Map(registry.map((entry) => [entry.code, entry])),
+    [registry],
+  )
+  const candidates: CandidateItem[] = useMemo(() => {
+    if (!data) return []
+    return data.candidates.map((item) => {
+      const entry = nameByCode.get(item.code)
+      if (!entry) return item
+      // 登録名がコードそのもの/未設定なら、サーバーが返した正式名を優先
+      const name = entry.name && entry.name !== entry.code ? entry.name : item.name
+      const sector = entry.sector && entry.sector !== '—' ? entry.sector : item.sector
+      return { ...item, name, sector }
     })
-  }, [])
+  }, [data, nameByCode])
 
   const counts = data?.counts ?? { dip: 0, rebound: 0, danger: 0, skip: 0 }
   const totalCandidates = counts.dip + counts.rebound + counts.danger
-  const filtered = (data?.candidates ?? []).filter((item) => item.category === filter)
+  const filtered = filter === 'all' ? candidates : candidates.filter((item) => item.category === filter)
+
+  const countFor = (key: FilterKey): number =>
+    key === 'all' ? candidates.length : counts[key]
 
   return (
     <div className="candidates-tab">
@@ -106,15 +147,15 @@ export function CandidatesTab({ onAnalyze }: CandidatesTabProps) {
       </section>
 
       <nav className="chip-bar" aria-label="候補の絞り込み">
-        {FILTER_ORDER.map((category) => (
+        {FILTER_ORDER.map((key) => (
           <button
-            key={category}
+            key={key}
             type="button"
-            className={`chip chip-${category}${category === filter ? ' active' : ''}`}
-            onClick={() => setFilter(category)}
+            className={`chip chip-${key}${key === filter ? ' active' : ''}`}
+            onClick={() => setFilter(key)}
           >
-            {CANDIDATE_CATEGORY_LABELS[category]}
-            <span className="chip-count">{counts[category]}</span>
+            {filterLabel(key)}
+            <span className="chip-count">{countFor(key)}</span>
           </button>
         ))}
       </nav>
@@ -137,11 +178,19 @@ export function CandidatesTab({ onAnalyze }: CandidatesTabProps) {
         </section>
       ) : null}
 
-      {!error && data && filtered.length === 0 ? (
+      {!error && data && registry.length === 0 ? (
         <section className="panel empty-panel">
-          <p className="eyebrow">{CANDIDATE_CATEGORY_LABELS[filter]}</p>
+          <p className="eyebrow">登録銘柄なし</p>
+          <h3>登録銘柄がありません</h3>
+          <p>「個別株調査」タブで銘柄を調べ、「登録銘柄に追加」すると、ここに表示されます。</p>
+        </section>
+      ) : null}
+
+      {!error && data && registry.length > 0 && filtered.length === 0 ? (
+        <section className="panel empty-panel">
+          <p className="eyebrow">{filterLabel(filter)}</p>
           <h3>該当する銘柄はありません</h3>
-          <p>別の絞り込みを選ぶか、更新して最新の候補を確認してください。</p>
+          <p>別の絞り込みを選ぶか、更新して最新の状態を確認してください。</p>
         </section>
       ) : null}
 
@@ -149,9 +198,8 @@ export function CandidatesTab({ onAnalyze }: CandidatesTabProps) {
         <CandidateCard
           key={item.code}
           item={item}
-          isWatched={watched.includes(item.code)}
           onAnalyze={onAnalyze}
-          onToggleWatch={toggleWatch}
+          onUnregister={onUnregister}
         />
       ))}
 

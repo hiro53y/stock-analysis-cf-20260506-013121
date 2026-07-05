@@ -20,8 +20,9 @@ const apiMocks = vi.hoisted(() => ({
   persistLastResult: vi.fn(),
   startAnalysis: vi.fn(),
   fetchCandidates: vi.fn(),
-  loadWatchlist: vi.fn(),
-  saveWatchlist: vi.fn(),
+  fetchSymbolSearch: vi.fn(),
+  loadRegistry: vi.fn(),
+  saveRegistry: vi.fn(),
 }))
 
 vi.mock('./lib/api', () => apiMocks)
@@ -138,8 +139,9 @@ describe('App', () => {
       counts: { dip: 0, rebound: 0, danger: 0, skip: 0 },
       candidates: [],
     })
-    apiMocks.loadWatchlist.mockReturnValue([])
-    apiMocks.saveWatchlist.mockImplementation(() => undefined)
+    apiMocks.fetchSymbolSearch.mockResolvedValue({ query: '', results: [] })
+    apiMocks.loadRegistry.mockReturnValue([])
+    apiMocks.saveRegistry.mockImplementation(() => undefined)
     apiMocks.fetchAnalysisStatus.mockReset()
   })
 
@@ -155,6 +157,7 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: '株式意思決定支援アプリ' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '候補抽出' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '個別株調査' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '使用方法' })).toBeInTheDocument()
     // 初期は候補抽出タブなので分析フォームは未表示
     expect(screen.queryByRole('button', { name: '分析を実行' })).not.toBeInTheDocument()
 

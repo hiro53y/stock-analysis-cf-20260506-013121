@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
 import { DEFAULT_ANALYSIS_INPUT, DEFAULT_JP_WATCHLIST } from '../shared/constants'
-import type { AnalysisRequestPayload, AnalysisResult, AnalysisStatusResponse, MarketDataResponse } from '../shared/types'
+import type {
+  AnalysisRequestPayload,
+  AnalysisResult,
+  AnalysisStatusResponse,
+  MarketDataResponse,
+  WatchlistEntry,
+} from '../shared/types'
 import { analysisRequestSchema, validateSymbolInput } from '../shared/validation'
 import { AnalysisForm } from './components/AnalysisForm'
 import { BacktestPanel } from './components/BacktestPanel'
 import { CandidatesTab } from './components/CandidatesTab'
 import { ExplainabilityPanel } from './components/ExplainabilityPanel'
+import { GuideTab } from './components/GuideTab'
 import { OverviewPanel } from './components/OverviewPanel'
 import {
   ApiError,
@@ -13,12 +20,14 @@ import {
   fetchAnalysisStatus,
   fetchMarketPreview,
   loadLastResult,
+  loadRegistry,
   persistLastResult,
+  saveRegistry,
   startAnalysis,
 } from './lib/api'
 
 type TabKey = 'overview' | 'backtest' | 'explain'
-type MainTabKey = 'candidates' | 'research'
+type MainTabKey = 'candidates' | 'research' | 'guide'
 const MAX_POLL_ATTEMPTS = 120
 
 const tabLabels: Record<TabKey, string> = {
@@ -30,6 +39,13 @@ const tabLabels: Record<TabKey, string> = {
 const mainTabLabels: Record<MainTabKey, string> = {
   candidates: '候補抽出',
   research: '個別株調査',
+  guide: '使用方法',
+}
+
+const tabDescriptions: Record<MainTabKey, string> = {
+  candidates: '登録銘柄の中から、短期売買で確認したい候補を優先表示します。',
+  research: '銘柄コードまたは会社名から、株価・騰落率・分析結果を個別に確認できます。',
+  guide: '用語の意味と分析結果の見方をまとめています。',
 }
 
 const statusLabels: Record<AnalysisStatusResponse['status'], string> = {
@@ -79,6 +95,7 @@ function readOfflineState(): boolean {
 
 export default function App() {
   const [mainTab, setMainTab] = useState<MainTabKey>('candidates')
+  const [registry, setRegistry] = useState<WatchlistEntry[]>(() => loadRegistry())
   const [form, setForm] = useState<AnalysisRequestPayload>(buildInitialForm())
   const [analysisId, setAnalysisId] = useState<string | null>(null)
   const [status, setStatus] = useState<AnalysisStatusResponse['status']>('completed')
@@ -276,17 +293,45 @@ export default function App() {
 
   // 候補抽出タブの「分析」から個別株調査へ遷移し、銘柄コードを引き継いで自動実行する
   const handleAnalyzeCandidate = (code: string) => {
+    const isJp = /\.T$/i.test(code)
     const nextForm: AnalysisRequestPayload = {
       ...form,
       symbol: code.replace(/\.T$/i, ''),
-      market: 'JP',
+      market: isJp ? 'JP' : 'US',
     }
     setForm(nextForm)
     setMainTab('research')
     void handleSubmit(nextForm)
   }
 
+  const registerStock = (entry: WatchlistEntry) => {
+    setRegistry((current) => {
+      if (current.some((item) => item.code === entry.code)) return current
+      const next = [...current, entry]
+      saveRegistry(next)
+      return next
+    })
+  }
+
+  const unregisterStock = (code: string) => {
+    setRegistry((current) => {
+      const next = current.filter((item) => item.code !== code)
+      saveRegistry(next)
+      return next
+    })
+  }
+
   const sector = result ? lookupSector(result.normalizedSymbol) : null
+  const isRegistered = result ? registry.some((item) => item.code === result.normalizedSymbol) : false
+
+  const handleRegisterResult = () => {
+    if (!result) return
+    registerStock({
+      code: result.normalizedSymbol,
+      name: result.companyName,
+      sector: sector ?? '—',
+    })
+  }
 
   return (
     <div className="app-shell">
@@ -316,14 +361,16 @@ export default function App() {
         ))}
       </nav>
 
-      <p className="tab-description">
-        {mainTab === 'candidates'
-          ? '登録銘柄の中から、短期売買で確認したい候補を優先表示します。'
-          : '銘柄コードを入力して、株価・騰落率・分析結果を個別に確認できます。'}
-      </p>
+      <p className="tab-description">{tabDescriptions[mainTab]}</p>
 
       {mainTab === 'candidates' ? (
-        <CandidatesTab onAnalyze={handleAnalyzeCandidate} />
+        <CandidatesTab
+          registry={registry}
+          onAnalyze={handleAnalyzeCandidate}
+          onUnregister={unregisterStock}
+        />
+      ) : mainTab === 'guide' ? (
+        <GuideTab />
       ) : (
         <main className="layout-grid">
           <AnalysisForm
@@ -351,6 +398,21 @@ export default function App() {
                   <span>
                     分析完了 {result.generatedAt.slice(0, 16).replace('T', ' ')}
                   </span>
+                </div>
+                <div className="target-actions">
+                  {isRegistered ? (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => unregisterStock(result.normalizedSymbol)}
+                    >
+                      登録済み（解除する）
+                    </button>
+                  ) : (
+                    <button type="button" className="primary-button" onClick={handleRegisterResult}>
+                      登録銘柄に追加
+                    </button>
+                  )}
                 </div>
               </section>
             ) : null}

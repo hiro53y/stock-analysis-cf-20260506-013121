@@ -1,5 +1,6 @@
 import { useId } from 'react'
-import type { AnalysisRequestPayload, MarketDataResponse } from '../../shared/types'
+import type { AnalysisRequestPayload, MarketCode, MarketDataResponse } from '../../shared/types'
+import { SymbolSearch } from './SymbolSearch'
 
 interface AnalysisFormProps {
   value: AnalysisRequestPayload
@@ -23,15 +24,25 @@ export function AnalysisForm({
   const buyId = useId()
   const sellId = useId()
 
+  const handleSearchSelect = (code: string, market: MarketCode) => {
+    onChange({ ...value, symbol: code.toUpperCase(), market })
+  }
+
+  const yahooUrl = value.symbol
+    ? `https://finance.yahoo.co.jp/search/?query=${encodeURIComponent(value.symbol)}`
+    : 'https://finance.yahoo.co.jp/'
+
   return (
     <section className="panel form-panel">
       <div className="panel-heading">
         <p className="eyebrow">入力パネル</p>
         <h2>株式分析設定</h2>
         <p className="panel-copy">
-          Android のブラウザで操作しやすいよう、主要な入力だけに絞っています。
+          会社名でも検索できます。コードが分かる場合は直接入力してください。
         </p>
       </div>
+
+      <SymbolSearch disabled={disabled} onSelect={handleSearchSelect} />
 
       <div className="form-group">
         <label htmlFor={symbolId}>銘柄コード</label>
@@ -42,6 +53,9 @@ export function AnalysisForm({
           onChange={(event) => onChange({ ...value, symbol: event.target.value.toUpperCase() })}
           disabled={disabled}
         />
+        <a className="yahoo-link" href={yahooUrl} target="_blank" rel="noopener noreferrer">
+          Yahoo!ファイナンスでコードを調べる ↗
+        </a>
       </div>
 
       <div className="form-group">
