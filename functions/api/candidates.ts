@@ -1,6 +1,6 @@
-import { DEFAULT_JP_WATCHLIST } from '../../shared/constants'
+import { CANDIDATE_PER_CATEGORY, DEFAULT_JP_WATCHLIST } from '../../shared/constants'
 import { computeCandidate, rankCandidates } from '../../shared/analysis/candidates'
-import type { CandidatesResponse, WatchlistEntry } from '../../shared/types'
+import type { CandidateCategory, CandidateItem, CandidatesResponse, WatchlistEntry } from '../../shared/types'
 import { canonicalCode } from '../../shared/utils'
 import type { Env } from './lib/env'
 import { errorResponseFromUnknown, getClientIp, jsonResponse } from './lib/http'
@@ -36,6 +36,40 @@ function buildUniverse(decliners: WatchlistEntry[], registered: WatchlistEntry[]
   return Array.from(byCode.values())
 }
 
+type ScoredCandidate = Omit<CandidateItem, 'rank'>
+
+/** カテゴリ内のおすすめ順スコア（危険は下落継続リスク、それ以外は反発期待）。 */
+function categoryScore(item: ScoredCandidate): number {
+  return item.category === 'danger' ? item.downtrendRisk : item.reboundScore
+}
+
+/**
+ * 各カテゴリ（押し目/反発/危険）をおすすめ上位から最大 max 件に絞る。
+ * 登録銘柄はユーザーの明示的な選択なので、上限を超えても常に残す。
+ */
+function capPerCategory(
+  items: ScoredCandidate[],
+  max: number,
+  registeredCodes: Set<string>,
+): ScoredCandidate[] {
+  const categories: CandidateCategory[] = ['dip', 'rebound', 'danger', 'skip']
+  const result: ScoredCandidate[] = []
+  for (const category of categories) {
+    const group = items
+      .filter((item) => item.category === category)
+      .sort((a, b) => categoryScore(b) - categoryScore(a))
+    let count = 0
+    for (const item of group) {
+      const isRegistered = registeredCodes.has(item.code)
+      if (isRegistered || count < max) {
+        result.push(item)
+        if (!isRegistered) count += 1
+      }
+    }
+  }
+  return result
+}
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { request, env } = context
 
@@ -66,7 +100,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       // 見送り（skip）は提案しない。ただし登録銘柄は常に残す。
       .filter((item) => item.category !== 'skip' || registeredCodes.has(item.code))
 
-    const { candidates, counts } = rankCandidates(rawCandidates)
+    // おすすめ上位から各カテゴリ最大 CANDIDATE_PER_CATEGORY 件に絞る（登録銘柄は常に残す）
+    const capped = capPerCategory(rawCandidates, CANDIDATE_PER_CATEGORY, registeredCodes)
+
+    const { candidates, counts } = rankCandidates(capped)
 
     const payload: CandidatesResponse = {
       generatedAt: new Date().toISOString(),

@@ -52,6 +52,7 @@ export const CANDIDATE_UNIVERSE_SIZE = 300 // 発見する銘柄数の上限（�
 export const RANKING_DOWN_PAGES = 6 // 値下がり率ランキングを辿るページ数（1ページ約43件）
 export const RANKING_VOLUME_PAGES = 2 // 出来高ランキング（大型株を含める）を辿るページ数
 export const SPARK_BATCH_CHUNK = 20 // spark 一括取得の上限（約20超で HTTP 400）
+export const CANDIDATE_PER_CATEGORY = 10 // 押し目/反発/危険 各カテゴリの表示上限（おすすめ上位）
 
 export const DEFAULT_JP_WATCHLIST: WatchlistEntry[] = [
   { code: '9983.T', name: 'ファーストリテイリング', sector: '小売' },
