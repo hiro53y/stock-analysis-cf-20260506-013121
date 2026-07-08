@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CANDIDATE_CATEGORY_LABELS,
   CANDIDATE_DISCLAIMER,
@@ -54,18 +54,25 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
     [registry],
   )
 
+  // 最新のリクエストだけを反映するためのカウンタ（古い応答の追い越しを無視）
+  const requestIdRef = useRef(0)
+
   const loadCandidates = useCallback(async () => {
     // 登録銘柄を渡す（空でも可）。サーバーは市場全体の本日値下がり銘柄とユニオンして返す。
     const codes = codesKey ? codesKey.split(',') : []
+    const requestId = requestIdRef.current + 1
+    requestIdRef.current = requestId
     setLoading(true)
     setError(null)
     try {
       const response = await fetchCandidates(codes)
+      if (requestIdRef.current !== requestId) return // 後発のリクエストが走っているので破棄
       setData(response)
     } catch (loadError) {
+      if (requestIdRef.current !== requestId) return
       setError(loadError instanceof Error ? loadError.message : '候補の取得に失敗しました。')
     } finally {
-      setLoading(false)
+      if (requestIdRef.current === requestId) setLoading(false)
     }
   }, [codesKey])
 

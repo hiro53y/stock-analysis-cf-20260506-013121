@@ -29,10 +29,16 @@ function resolveRegistered(url: URL): WatchlistEntry[] {
  * 本日の値下がりランキング（日本株全体）と登録銘柄をユニオンして母集団を作る。
  * 同一コードは登録銘柄の name/sector を優先する。
  */
-function buildUniverse(decliners: WatchlistEntry[], registered: WatchlistEntry[]): WatchlistEntry[] {
+function buildUniverse(discovered: WatchlistEntry[], registered: WatchlistEntry[]): WatchlistEntry[] {
   const byCode = new Map<string, WatchlistEntry>()
-  for (const entry of decliners) byCode.set(entry.code, entry)
-  for (const entry of registered) byCode.set(entry.code, entry) // 登録側で上書き
+  for (const entry of discovered) byCode.set(entry.code, entry)
+  for (const entry of registered) {
+    // 登録側を優先しつつ、名称・業種が未設定（コードのみ/—）なら発見側の値を活かす
+    const existing = byCode.get(entry.code)
+    const name = entry.name && entry.name !== entry.code ? entry.name : (existing?.name ?? entry.name)
+    const sector = entry.sector && entry.sector !== '—' ? entry.sector : (existing?.sector ?? entry.sector)
+    byCode.set(entry.code, { code: entry.code, name, sector })
+  }
   return Array.from(byCode.values())
 }
 

@@ -150,14 +150,30 @@ export async function getSparkBatch(
     chunks.push(unique.slice(index, index + SPARK_BATCH_CHUNK))
   }
 
-  const maps = await Promise.all(chunks.map((chunk) => getSparkChunk(chunk, ttlSeconds)))
+  // 一部のチャンクが失敗（レート制限など）しても、成功分は活かして候補を出す。
+  // 全チャンクが失敗した場合のみ、最初のエラーを投げて呼び出し側に伝える。
+  const settled = await Promise.allSettled(
+    chunks.map((chunk) => getSparkChunk(chunk, ttlSeconds)),
+  )
 
   const merged = new Map<string, number[]>()
-  for (const map of maps) {
-    for (const [symbol, closes] of map) {
-      merged.set(symbol, closes)
+  let fulfilled = 0
+  let firstError: unknown = null
+  for (const outcome of settled) {
+    if (outcome.status === 'fulfilled') {
+      fulfilled += 1
+      for (const [symbol, closes] of outcome.value) {
+        merged.set(symbol, closes)
+      }
+    } else if (firstError === null) {
+      firstError = outcome.reason
     }
   }
+
+  if (fulfilled === 0 && firstError !== null) {
+    throw firstError
+  }
+
   return merged
 }
 

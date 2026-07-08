@@ -14,9 +14,11 @@ export interface RankingHit {
 
 type RankingCategory = 'down' | 'volume'
 
-// ETF/ETN/指数連動などの非・個別株を社名から軽く除外する
+// ETF/ETN/指数連動などの非・個別株を社名から除外する。
+// 注意: 「ブル」「ベア」等の裸のカタカナは正規銘柄（ブルボン/ダブル・スコープ/ブルーイノベーション等）に
+// 誤爆するため使わない。ETF は「上場投信/ETF/レバレッジ/インバース/日経/TOPIX」で十分に捕捉できる。
 const NON_STOCK_PATTERN =
-  /ETF|ETN|上場投信|投信|日経|ＴＯＰＩＸ|TOPIX|レバレッジ|インバース|ダブル・?ブル|ブル|ベア|REIT|リート|指数|先物|連動/i
+  /ETF|ETN|上場投信|投信|日経|ＴＯＰＩＸ|TOPIX|レバレッジ|インバース|ＲＥＩＴ|REIT|リート/i
 
 // 会社名に現れうる基本的な HTML エンティティのみを復元する
 function decodeEntities(value: string): string {
