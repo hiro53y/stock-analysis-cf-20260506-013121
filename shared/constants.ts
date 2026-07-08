@@ -47,6 +47,12 @@ export const SIGNAL_LABELS: Record<FinalSignal, string> = {
 export const CAPITAL_GAINS_TAX_RATE = 0.20315 // 日本の上場株式譲渡益課税
 export const SAMPLE_BUDGET_YEN = 50000 // 5万円購入時の概算に使用
 
+// 候補抽出は日本株全体の「本日の値下がり銘柄＋出来高上位」をランキングから発見して母集団にする
+export const CANDIDATE_UNIVERSE_SIZE = 300 // 発見する銘柄数の上限（できるだけ幅広く走査）
+export const RANKING_DOWN_PAGES = 6 // 値下がり率ランキングを辿るページ数（1ページ約43件）
+export const RANKING_VOLUME_PAGES = 2 // 出来高ランキング（大型株を含める）を辿るページ数
+export const SPARK_BATCH_CHUNK = 20 // spark 一括取得の上限（約20超で HTTP 400）
+
 export const DEFAULT_JP_WATCHLIST: WatchlistEntry[] = [
   { code: '9983.T', name: 'ファーストリテイリング', sector: '小売' },
   { code: '7203.T', name: 'トヨタ自動車', sector: '自動車' },

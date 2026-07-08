@@ -4,7 +4,9 @@ import { formatCompactNumber, formatReturn } from '../../shared/utils'
 
 interface CandidateCardProps {
   item: CandidateItem
+  isRegistered: boolean
   onAnalyze: (code: string) => void
+  onRegister: (item: CandidateItem) => void
   onUnregister: (code: string) => void
 }
 
@@ -19,7 +21,13 @@ function formatShares(value: number): string {
   return value < 1 ? value.toFixed(2) : formatCompactNumber(Math.floor(value))
 }
 
-export function CandidateCard({ item, onAnalyze, onUnregister }: CandidateCardProps) {
+export function CandidateCard({
+  item,
+  isRegistered,
+  onAnalyze,
+  onRegister,
+  onUnregister,
+}: CandidateCardProps) {
   const isNegativeCard = item.category === 'danger'
 
   return (
@@ -99,13 +107,23 @@ export function CandidateCard({ item, onAnalyze, onUnregister }: CandidateCardPr
         <button type="button" className="primary-button analyze-button" onClick={() => onAnalyze(item.code)}>
           分析
         </button>
-        <button
-          type="button"
-          className="secondary-button unregister-button"
-          onClick={() => onUnregister(item.code)}
-        >
-          登録解除
-        </button>
+        {isRegistered ? (
+          <button
+            type="button"
+            className="secondary-button unregister-button"
+            onClick={() => onUnregister(item.code)}
+          >
+            登録解除
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="secondary-button register-button"
+            onClick={() => onRegister(item)}
+          >
+            登録
+          </button>
+        )}
       </div>
     </article>
   )

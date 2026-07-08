@@ -1,5 +1,6 @@
 import { useId } from 'react'
-import type { AnalysisRequestPayload, MarketCode, MarketDataResponse } from '../../shared/types'
+import type { AnalysisRequestPayload, MarketDataResponse, SymbolSearchHit } from '../../shared/types'
+import { canonicalCode } from '../../shared/utils'
 import { SymbolSearch } from './SymbolSearch'
 
 interface AnalysisFormProps {
@@ -24,8 +25,11 @@ export function AnalysisForm({
   const buyId = useId()
   const sellId = useId()
 
-  const handleSearchSelect = (code: string, market: MarketCode) => {
-    onChange({ ...value, symbol: code.toUpperCase(), market })
+  const handleSearchSelect = (hit: SymbolSearchHit) => {
+    const code = canonicalCode(hit.symbol)
+    const isJp = /\.T$/i.test(code)
+    // 銘柄コード欄には JP は 4桁のみ（.T なし）、米国株はそのまま入れる
+    onChange({ ...value, symbol: isJp ? code.replace(/\.T$/i, '') : code, market: isJp ? 'JP' : 'US' })
   }
 
   const yahooUrl = value.symbol

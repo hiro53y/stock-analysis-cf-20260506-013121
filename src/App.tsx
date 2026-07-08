@@ -8,6 +8,7 @@ import type {
   WatchlistEntry,
 } from '../shared/types'
 import { analysisRequestSchema, validateSymbolInput } from '../shared/validation'
+import { canonicalCode } from '../shared/utils'
 import { AnalysisForm } from './components/AnalysisForm'
 import { BacktestPanel } from './components/BacktestPanel'
 import { CandidatesTab } from './components/CandidatesTab'
@@ -43,7 +44,7 @@ const mainTabLabels: Record<MainTabKey, string> = {
 }
 
 const tabDescriptions: Record<MainTabKey, string> = {
-  candidates: '登録銘柄の中から、短期売買で確認したい候補を優先表示します。',
+  candidates: '日本株全体から本日値下がりした銘柄を集め、押し目・反発・危険に仕分けして表示します。',
   research: '銘柄コードまたは会社名から、株価・騰落率・分析結果を個別に確認できます。',
   guide: '用語の意味と分析結果の見方をまとめています。',
 }
@@ -305,24 +306,28 @@ export default function App() {
   }
 
   const registerStock = (entry: WatchlistEntry) => {
+    const normalized: WatchlistEntry = { ...entry, code: canonicalCode(entry.code) }
     setRegistry((current) => {
-      if (current.some((item) => item.code === entry.code)) return current
-      const next = [...current, entry]
+      if (current.some((item) => item.code === normalized.code)) return current
+      const next = [...current, normalized]
       saveRegistry(next)
       return next
     })
   }
 
   const unregisterStock = (code: string) => {
+    const target = canonicalCode(code)
     setRegistry((current) => {
-      const next = current.filter((item) => item.code !== code)
+      const next = current.filter((item) => item.code !== target)
       saveRegistry(next)
       return next
     })
   }
 
   const sector = result ? lookupSector(result.normalizedSymbol) : null
-  const isRegistered = result ? registry.some((item) => item.code === result.normalizedSymbol) : false
+  const isRegistered = result
+    ? registry.some((item) => item.code === canonicalCode(result.normalizedSymbol))
+    : false
 
   const handleRegisterResult = () => {
     if (!result) return
@@ -339,7 +344,7 @@ export default function App() {
         <div className="hero-copy">
           <h1>株式意思決定支援アプリ</h1>
           <p>
-            登録した日本株の中から候補を整理し、気になる銘柄を個別に調査できます。
+            日本株全体から本日安くなった銘柄を探し、気になる株を個別に調査できます。
           </p>
         </div>
         <div className="hero-stat">
@@ -367,6 +372,7 @@ export default function App() {
         <CandidatesTab
           registry={registry}
           onAnalyze={handleAnalyzeCandidate}
+          onRegister={registerStock}
           onUnregister={unregisterStock}
         />
       ) : mainTab === 'guide' ? (

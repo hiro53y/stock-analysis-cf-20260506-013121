@@ -1,4 +1,8 @@
-import { HISTORY_RANGE, MARKET_DATA_CACHE_TTL_SECONDS } from '../../../shared/constants'
+import {
+  HISTORY_RANGE,
+  MARKET_DATA_CACHE_TTL_SECONDS,
+  SPARK_BATCH_CHUNK,
+} from '../../../shared/constants'
 import type { MarketCode, MarketDataResponse, OHLCVRow, ResolvedMarket } from '../../../shared/types'
 import { HttpError } from './http'
 
@@ -17,7 +21,15 @@ export function normalizeSymbol(
   return { normalizedSymbol: baseSymbol, market: 'US' }
 }
 
-async function fetchCachedJson(url: string, ttlSeconds: number): Promise<unknown> {
+/**
+ * 任意の URL を取得して生テキストで返す。Cache API を使って TTL キャッシュし、
+ * 429/HTTP エラーは HttpError に正規化する。JSON でも HTML でも使える汎用版。
+ */
+export async function fetchCachedText(
+  url: string,
+  ttlSeconds: number,
+  accept = 'application/json',
+): Promise<string> {
   const request = new Request(url)
   const cacheApi =
     typeof caches !== 'undefined' ? await caches.open('stock-analysis-cache') : null
@@ -26,14 +38,14 @@ async function fetchCachedJson(url: string, ttlSeconds: number): Promise<unknown
   if (cached) {
     const expiresAt = Number(cached.headers.get('x-cache-expires-at'))
     if (Number.isFinite(expiresAt) && expiresAt > Date.now()) {
-      return cached.json()
+      return cached.text()
     }
   }
 
   const response = await fetch(url, {
     headers: {
       'user-agent': 'Mozilla/5.0 (Cloudflare Stock Analysis App)',
-      accept: 'application/json',
+      accept,
     },
   })
 
@@ -50,13 +62,16 @@ async function fetchCachedJson(url: string, ttlSeconds: number): Promise<unknown
 
   if (cacheApi) {
     const headers = new Headers({
-      'content-type': 'application/json',
       'x-cache-expires-at': String(Date.now() + ttlSeconds * 1000),
     })
     await cacheApi.put(request, new Response(text, { headers }))
   }
 
-  return JSON.parse(text)
+  return text
+}
+
+async function fetchCachedJson(url: string, ttlSeconds: number): Promise<unknown> {
+  return JSON.parse(await fetchCachedText(url, ttlSeconds))
 }
 
 function sanitizeRows(rawRows: Array<OHLCVRow | null>): OHLCVRow[] {
@@ -79,16 +94,15 @@ function toFiniteCloses(closesRaw: unknown): number[] {
  * （例: `{ "7203.T": { close: [...], symbol: "7203.T" } }`）で返る。
  * 念のため、旧来の `spark.result[].response[]` 形式もフォールバックで解釈する。
  */
-export async function getSparkBatch(
+async function getSparkChunk(
   symbols: string[],
-  ttlSeconds: number = MARKET_DATA_CACHE_TTL_SECONDS,
+  ttlSeconds: number,
 ): Promise<Map<string, number[]>> {
   const result = new Map<string, number[]>()
-  const unique = Array.from(new Set(symbols.map((symbol) => symbol.trim()).filter(Boolean)))
-  if (unique.length === 0) return result
+  if (symbols.length === 0) return result
 
   const sparkUrl = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${encodeURIComponent(
-    unique.join(','),
+    symbols.join(','),
   )}&range=3mo&interval=1d`
 
   const payload = (await fetchCachedJson(sparkUrl, ttlSeconds)) as Record<string, unknown> & {
@@ -123,10 +137,74 @@ export async function getSparkBatch(
   return result
 }
 
+export async function getSparkBatch(
+  symbols: string[],
+  ttlSeconds: number = MARKET_DATA_CACHE_TTL_SECONDS,
+): Promise<Map<string, number[]>> {
+  const unique = Array.from(new Set(symbols.map((symbol) => symbol.trim()).filter(Boolean)))
+  if (unique.length === 0) return new Map<string, number[]>()
+
+  // spark は一括で約20銘柄が上限のため、チャンクに分割して並列取得しマージする
+  const chunks: string[][] = []
+  for (let index = 0; index < unique.length; index += SPARK_BATCH_CHUNK) {
+    chunks.push(unique.slice(index, index + SPARK_BATCH_CHUNK))
+  }
+
+  const maps = await Promise.all(chunks.map((chunk) => getSparkChunk(chunk, ttlSeconds)))
+
+  const merged = new Map<string, number[]>()
+  for (const map of maps) {
+    for (const [symbol, closes] of map) {
+      merged.set(symbol, closes)
+    }
+  }
+  return merged
+}
+
 export interface SymbolSearchHit {
   symbol: string
   name: string
   exchange: string
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+}
+
+/**
+ * Yahoo!ファイナンス（日本）の検索ページから会社名で銘柄を引く。
+ * v6 autocomplete が漢字社名（例: 任天堂）を返さないケースのフォールバック。
+ */
+async function searchSymbolsFromJapan(
+  query: string,
+  ttlSeconds: number,
+): Promise<SymbolSearchHit[]> {
+  const url = `https://finance.yahoo.co.jp/search/?query=${encodeURIComponent(query)}`
+  let html: string
+  try {
+    html = await fetchCachedText(url, ttlSeconds, 'text/html')
+  } catch {
+    return []
+  }
+
+  const hits: SymbolSearchHit[] = []
+  const seen = new Set<string>()
+  const item =
+    /\/quote\/(\d{4})\.T"[\s\S]{0,400}?<h2 class="SearchItem__name[^"]*">([\s\S]*?)<\/h2>/g
+  let match: RegExpExecArray | null
+  while ((match = item.exec(html)) !== null && hits.length < 8) {
+    const symbol = `${match[1]}.T`
+    if (seen.has(symbol)) continue
+    seen.add(symbol)
+    const name = decodeHtmlEntities(match[2].replace(/<[^>]+>/g, '')).trim()
+    hits.push({ symbol, name: name || symbol, exchange: '東証' })
+  }
+  return hits
 }
 
 /**
@@ -167,6 +245,11 @@ export async function searchSymbols(
       name: item.name ?? symbol,
       exchange: item.exchDisp ?? item.exch ?? '',
     })
+  }
+
+  // autocomplete が0件（漢字社名などで発生）の場合は Yahoo Japan 検索でフォールバック
+  if (hits.length === 0) {
+    return searchSymbolsFromJapan(trimmed, ttlSeconds)
   }
 
   // 日本株（.T）を優先

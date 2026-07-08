@@ -960,7 +960,45 @@ select {
   color: #042027;
 }
 
-/* 登録解除ボタン */
+.chip-registered.active {
+  background: rgba(226, 199, 122, 0.9);
+  color: #241a05;
+}
+
+/* 候補サマリーの説明文 */
+.summary-lead {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* 検索して登録するパネル */
+.register-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.register-search-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.98rem;
+}
+
+.register-search-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.register-search .symbol-search {
+  margin-top: 4px;
+}
+
+/* 登録／登録解除ボタン */
+.register-button,
 .unregister-button {
   text-align: center;
 }

@@ -1,4 +1,5 @@
-import { DEFAULT_ANALYSIS_INPUT, DEFAULT_JP_WATCHLIST } from '../../shared/constants'
+import { DEFAULT_ANALYSIS_INPUT } from '../../shared/constants'
+import { canonicalCode } from '../../shared/utils'
 import type {
   AnalysisCreateResponse,
   AnalysisRequestPayload,
@@ -304,17 +305,27 @@ const registryEntrySchema = z.object({
   sector: z.string(),
 })
 
-function defaultRegistry(): WatchlistEntry[] {
-  return DEFAULT_JP_WATCHLIST.map((entry) => ({ ...entry }))
+/** コードを正準化（JP は .T 付き）し、同一コードを重複排除する。 */
+function canonicalizeEntries(entries: WatchlistEntry[]): WatchlistEntry[] {
+  const byCode = new Map<string, WatchlistEntry>()
+  for (const entry of entries) {
+    const code = canonicalCode(entry.code)
+    if (!code) continue
+    byCode.set(code, { ...entry, code })
+  }
+  return Array.from(byCode.values())
 }
 
-/** 登録銘柄（ユーザーが登録した銘柄）を読み込む。旧 string[] 形式からは移行する。 */
+/**
+ * 登録銘柄（ユーザーが登録した銘柄）を読み込む。旧 string[] 形式からは移行する。
+ * 候補は市場スキャンで賄うため、未登録の既定値は空配列。
+ */
 export function loadRegistry(): WatchlistEntry[] {
   try {
     const raw = localStorage.getItem(REGISTRY_KEY)
     if (raw) {
       const parsed = z.array(registryEntrySchema).safeParse(JSON.parse(raw))
-      if (parsed.success) return parsed.data
+      if (parsed.success) return canonicalizeEntries(parsed.data)
       localStorage.removeItem(REGISTRY_KEY)
     }
 
@@ -323,9 +334,8 @@ export function loadRegistry(): WatchlistEntry[] {
     if (legacy) {
       const parsedLegacy = z.array(z.string()).safeParse(JSON.parse(legacy))
       if (parsedLegacy.success && parsedLegacy.data.length > 0) {
-        const byCode = new Map(DEFAULT_JP_WATCHLIST.map((entry) => [entry.code, entry]))
-        const migrated = parsedLegacy.data.map<WatchlistEntry>(
-          (code) => byCode.get(code) ?? { code, name: code, sector: '—' },
+        const migrated = canonicalizeEntries(
+          parsedLegacy.data.map<WatchlistEntry>((code) => ({ code, name: code, sector: '—' })),
         )
         localStorage.removeItem(LEGACY_WATCHLIST_KEY)
         saveRegistry(migrated)
@@ -333,15 +343,15 @@ export function loadRegistry(): WatchlistEntry[] {
       }
     }
 
-    return defaultRegistry()
+    return []
   } catch {
-    return defaultRegistry()
+    return []
   }
 }
 
 export function saveRegistry(entries: WatchlistEntry[]): void {
   try {
-    localStorage.setItem(REGISTRY_KEY, JSON.stringify(entries))
+    localStorage.setItem(REGISTRY_KEY, JSON.stringify(canonicalizeEntries(entries)))
   } catch {
     // Storage 不可のブラウザでは登録状態を永続化しない
   }

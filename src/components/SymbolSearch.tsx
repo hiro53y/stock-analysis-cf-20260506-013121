@@ -1,20 +1,15 @@
 import { useEffect, useId, useState } from 'react'
-import type { MarketCode, SymbolSearchHit } from '../../shared/types'
+import type { SymbolSearchHit } from '../../shared/types'
 import { fetchSymbolSearch } from '../lib/api'
 
 interface SymbolSearchProps {
   disabled?: boolean
-  onSelect: (code: string, market: MarketCode) => void
+  label?: string
+  placeholder?: string
+  onSelect: (hit: SymbolSearchHit) => void
 }
 
-function toCodeAndMarket(symbol: string): { code: string; market: MarketCode } {
-  if (symbol.toUpperCase().endsWith('.T')) {
-    return { code: symbol.replace(/\.T$/i, ''), market: 'JP' }
-  }
-  return { code: symbol, market: 'US' }
-}
-
-export function SymbolSearch({ disabled, onSelect }: SymbolSearchProps) {
+export function SymbolSearch({ disabled, label, placeholder, onSelect }: SymbolSearchProps) {
   const inputId = useId()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SymbolSearchHit[]>([])
@@ -60,8 +55,7 @@ export function SymbolSearch({ disabled, onSelect }: SymbolSearchProps) {
   }, [query])
 
   const handleSelect = (hit: SymbolSearchHit) => {
-    const { code, market } = toCodeAndMarket(hit.symbol)
-    onSelect(code, market)
+    onSelect(hit)
     setQuery('')
     setResults([])
     setOpen(false)
@@ -69,11 +63,11 @@ export function SymbolSearch({ disabled, onSelect }: SymbolSearchProps) {
 
   return (
     <div className="form-group symbol-search">
-      <label htmlFor={inputId}>会社名で検索</label>
+      <label htmlFor={inputId}>{label ?? '会社名で検索'}</label>
       <input
         id={inputId}
         value={query}
-        placeholder="例: トヨタ / ソニー / Apple"
+        placeholder={placeholder ?? '例: トヨタ / ソニー / Apple'}
         autoComplete="off"
         disabled={disabled}
         onChange={(event) => setQuery(event.target.value)}

@@ -20,10 +20,10 @@ export function GuideTab() {
         </div>
         <div className="guide-list">
           <GuideRow term={<span className="guide-chip">候補抽出</span>}>
-            <b>登録した銘柄</b>の中から、いま注目したい銘柄を「押し目・反発・危険・見送り」に分けて一覧表示します。
+            <b>日本株全体の「本日値下がりした銘柄」</b>を自動で集め、「押し目・反発・危険」に分けて一覧表示します。安く買える候補を探すためのタブです。
           </GuideRow>
           <GuideRow term={<span className="guide-chip">個別株調査</span>}>
-            気になる1銘柄を入力して、株価・騰落率・分析結果をくわしく調べます。ここで「登録銘柄に追加」すると候補抽出に出てきます。
+            気になる1銘柄を入力して、株価・騰落率・分析結果をくわしく調べます。ここで「登録銘柄に追加」すると、候補抽出の「登録銘柄」でも絞り込めます。
           </GuideRow>
           <GuideRow term={<span className="guide-chip">使用方法</span>}>
             このページです。用語や結果の見方を確認できます。
@@ -37,8 +37,11 @@ export function GuideTab() {
           <h3>用語の意味</h3>
         </div>
         <div className="guide-list">
+          <GuideRow term={<span className="guide-chip">本日の候補</span>}>
+            日本株全体から本日値下がりした銘柄を集めた一覧です。相場によって毎日入れ替わります。上部のチップで「押し目・反発・危険・登録銘柄」に絞り込めます。
+          </GuideRow>
           <GuideRow term={<span className="guide-chip">登録銘柄</span>}>
-            あなたが登録した銘柄のこと。既定で主要な日本株が入っています。個別株調査から追加、各カードの「登録解除」で削除できます。
+            <b>あなた自身が登録した銘柄</b>のこと。候補抽出タブ上部の検索や各カードの「登録」で追加、「登録解除」で削除できます。「登録銘柄」チップで自分の銘柄だけを表示できます。
           </GuideRow>
           <GuideRow term={<span className="candidate-tag tag-dip">押し目候補</span>}>
             上昇の流れは続いているのに、一時的に少し下がった銘柄。<b>上げ相場の一時的な下げ＝買い場になりやすい</b>という考え方です。
@@ -50,7 +53,7 @@ export function GuideTab() {
             短期間で大きく下げ、安値を更新しているなど<b>下落が続くリスクが高い</b>状態。安易な買いは避けたい銘柄です。
           </GuideRow>
           <GuideRow term={<span className="candidate-tag tag-skip">見送り</span>}>
-            いまは明確な買い場・売り場のサインが乏しく、<b>様子見が無難</b>な状態です。
+            明確な買い場のサインが乏しく<b>様子見が無難</b>な状態。候補一覧には原則表示しません（登録した銘柄がこの状態のときだけ表示されます）。
           </GuideRow>
           <GuideRow term={<span className="guide-metric val-positive">反発期待<br />64.4</span>}>
             反発しそうな度合いを0〜100で表した目安。数字が大きいほど反発を期待しやすい、という指標です。
@@ -80,11 +83,11 @@ export function GuideTab() {
             term={
               <span className="guide-buttons">
                 <span className="mini-button primary">分析</span>
-                <span className="mini-button secondary">登録解除</span>
+                <span className="mini-button secondary">登録</span>
               </span>
             }
           >
-            「分析」で個別株調査タブへ移動して自動で詳しく調べます。「登録解除」で登録銘柄から外します。
+            「分析」で個別株調査タブへ移動して自動で詳しく調べます。「登録」で登録銘柄に追加（登録済みなら「登録解除」に変わります）。
           </GuideRow>
         </div>
       </section>

@@ -5,6 +5,17 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+/**
+ * 銘柄コードを正準形へ揃える。日本株の4桁コードは `.T` を必ず付け、
+ * すでに `.T` 付き・米国株などは大文字トリムのみ。
+ * これで登録・候補取得・spark 取得の間でコード表記を一致させ、取りこぼしを防ぐ。
+ */
+export function canonicalCode(code: string): string {
+  const trimmed = code.trim().toUpperCase()
+  if (/^\d{4}$/.test(trimmed)) return `${trimmed}.T`
+  return trimmed
+}
+
 export function safeNumber(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
