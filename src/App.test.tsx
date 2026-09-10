@@ -31,7 +31,7 @@ import App from './App'
 
 // 個別株調査タブ（分析フォーム）へ切り替える
 function gotoResearch(): void {
-  fireEvent.click(screen.getByRole('button', { name: '個別株調査' }))
+  fireEvent.click(screen.getByRole('tab', { name: '個別株調査' }))
 }
 
 function setNavigatorOnline(value: boolean) {
@@ -137,6 +137,7 @@ describe('App', () => {
       generatedAt: '2026-04-16T06:55:00.000Z',
       registeredCount: 0,
       counts: { dip: 0, rebound: 0, danger: 0, skip: 0 },
+      summary: { scanned: 0, declining: 0, analyzed: 0, averageDecline: 0, partial: false },
       candidates: [],
     })
     apiMocks.fetchSymbolSearch.mockResolvedValue({ query: '', results: [] })
@@ -155,14 +156,45 @@ describe('App', () => {
     render(<App />)
 
     expect(screen.getByRole('heading', { name: '株式意思決定支援アプリ' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '候補抽出' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '個別株調査' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '使用方法' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '候補抽出' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '個別株調査' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: '使用方法' })).toBeInTheDocument()
     // 初期は候補抽出タブなので分析フォームは未表示
     expect(screen.queryByRole('button', { name: '分析を実行' })).not.toBeInTheDocument()
 
     gotoResearch()
     expect(screen.getByRole('button', { name: '分析を実行' })).toBeInTheDocument()
+  })
+
+  it('未実行のときは進捗100%や英語の状態を出さない', () => {
+    render(<App />)
+    gotoResearch()
+
+    // 以前は初期 state が completed / progress 100 で、
+    // 「待機中」の見出しの横に英語の completed バッジと 100% が並んでいた
+    expect(screen.getByText('未実行')).toBeInTheDocument()
+    expect(screen.queryByText('completed')).not.toBeInTheDocument()
+    expect(screen.queryByText('100%')).not.toBeInTheDocument()
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
+  it('実行状況のバッジは日本語ラベルで表示する', async () => {
+    const user = userEvent.setup()
+    apiMocks.fetchAnalysisStatus.mockResolvedValue({
+      status: 'running',
+      progress: 40,
+      progressMessage: '分析中です。',
+      cached: false,
+    })
+
+    render(<App />)
+    gotoResearch()
+    await user.click(screen.getByRole('button', { name: '分析を実行' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('実行中')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('running')).not.toBeInTheDocument()
   })
 
   it('状態取得が一時失敗しても再試行して完了結果を反映する', async () => {

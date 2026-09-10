@@ -2,9 +2,11 @@ import {
   HISTORY_RANGE,
   MARKET_DATA_CACHE_TTL_SECONDS,
   SPARK_BATCH_CHUNK,
+  SPARK_HISTORY_RANGE,
 } from '../../../shared/constants'
 import type { MarketCode, MarketDataResponse, OHLCVRow, ResolvedMarket } from '../../../shared/types'
 import { HttpError } from './http'
+import { isBudgetExhausted, type SubrequestBudget } from './subrequest-budget'
 
 export function normalizeSymbol(
   symbol: string,
@@ -24,12 +26,20 @@ export function normalizeSymbol(
 /**
  * 任意の URL を取得して生テキストで返す。Cache API を使って TTL キャッシュし、
  * 429/HTTP エラーは HttpError に正規化する。JSON でも HTML でも使える汎用版。
+ *
+ * budget を渡すと、Cloudflare の subrequest 上限に当たる前に自分で打ち切る
+ * （キャッシュヒットの場合は fetch/put を行わないため、予算は払い戻す）。
  */
 export async function fetchCachedText(
   url: string,
   ttlSeconds: number,
   accept = 'application/json',
+  budget?: SubrequestBudget,
 ): Promise<string> {
+  // 予算を先に確保する。実際に消費しなかった分（キャッシュヒット）は返さない代わりに、
+  // 予算そのものを保守的に見積もっているので、超過側に倒れることはない。
+  budget?.spend()
+
   const request = new Request(url)
   const cacheApi =
     typeof caches !== 'undefined' ? await caches.open('stock-analysis-cache') : null
@@ -70,8 +80,12 @@ export async function fetchCachedText(
   return text
 }
 
-async function fetchCachedJson(url: string, ttlSeconds: number): Promise<unknown> {
-  return JSON.parse(await fetchCachedText(url, ttlSeconds))
+async function fetchCachedJson(
+  url: string,
+  ttlSeconds: number,
+  budget?: SubrequestBudget,
+): Promise<unknown> {
+  return JSON.parse(await fetchCachedText(url, ttlSeconds, 'application/json', budget))
 }
 
 function sanitizeRows(rawRows: Array<OHLCVRow | null>): OHLCVRow[] {
@@ -97,15 +111,16 @@ function toFiniteCloses(closesRaw: unknown): number[] {
 async function getSparkChunk(
   symbols: string[],
   ttlSeconds: number,
+  budget?: SubrequestBudget,
 ): Promise<Map<string, number[]>> {
   const result = new Map<string, number[]>()
   if (symbols.length === 0) return result
 
   const sparkUrl = `https://query1.finance.yahoo.com/v8/finance/spark?symbols=${encodeURIComponent(
     symbols.join(','),
-  )}&range=3mo&interval=1d`
+  )}&range=${SPARK_HISTORY_RANGE}&interval=1d`
 
-  const payload = (await fetchCachedJson(sparkUrl, ttlSeconds)) as Record<string, unknown> & {
+  const payload = (await fetchCachedJson(sparkUrl, ttlSeconds, budget)) as Record<string, unknown> & {
     spark?: {
       result?: Array<{
         symbol?: string
@@ -137,12 +152,21 @@ async function getSparkChunk(
   return result
 }
 
+export interface SparkBatchResult {
+  closesBySymbol: Map<string, number[]>
+  /** 予算切れ・取得失敗で一部のチャンクを取得できなかった場合 true */
+  partial: boolean
+}
+
 export async function getSparkBatch(
   symbols: string[],
   ttlSeconds: number = MARKET_DATA_CACHE_TTL_SECONDS,
-): Promise<Map<string, number[]>> {
+  budget?: SubrequestBudget,
+): Promise<SparkBatchResult> {
   const unique = Array.from(new Set(symbols.map((symbol) => symbol.trim()).filter(Boolean)))
-  if (unique.length === 0) return new Map<string, number[]>()
+  if (unique.length === 0) {
+    return { closesBySymbol: new Map<string, number[]>(), partial: false }
+  }
 
   // spark は一括で約20銘柄が上限のため、チャンクに分割して並列取得しマージする
   const chunks: string[][] = []
@@ -150,10 +174,15 @@ export async function getSparkBatch(
     chunks.push(unique.slice(index, index + SPARK_BATCH_CHUNK))
   }
 
+  // 予算内に収まるチャンクだけを実行する
+  const affordable = budget ? budget.affordableFetches() : chunks.length
+  const planned = chunks.slice(0, affordable)
+  let partial = planned.length < chunks.length
+
   // 一部のチャンクが失敗（レート制限など）しても、成功分は活かして候補を出す。
   // 全チャンクが失敗した場合のみ、最初のエラーを投げて呼び出し側に伝える。
   const settled = await Promise.allSettled(
-    chunks.map((chunk) => getSparkChunk(chunk, ttlSeconds)),
+    planned.map((chunk) => getSparkChunk(chunk, ttlSeconds, budget)),
   )
 
   const merged = new Map<string, number[]>()
@@ -165,8 +194,10 @@ export async function getSparkBatch(
       for (const [symbol, closes] of outcome.value) {
         merged.set(symbol, closes)
       }
-    } else if (firstError === null) {
-      firstError = outcome.reason
+    } else {
+      partial = true
+      if (isBudgetExhausted(outcome.reason)) continue
+      if (firstError === null) firstError = outcome.reason
     }
   }
 
@@ -174,7 +205,7 @@ export async function getSparkBatch(
     throw firstError
   }
 
-  return merged
+  return { closesBySymbol: merged, partial }
 }
 
 export interface SymbolSearchHit {
@@ -273,16 +304,21 @@ export async function searchSymbols(
   return hits
 }
 
+/**
+ * 銘柄コードから会社名を引く。
+ *
+ * 以前は v7/finance/quote を使っていたが、このエンドポイントは現在 crumb 認証が必要で
+ * 常に失敗し、catch で銘柄コードをそのまま返していた（画面に「7203.T」と表示される原因）。
+ * 認証不要の検索エンドポイントに切り替え、完全一致した候補の社名を使う。
+ */
 async function fetchCompanyName(normalizedSymbol: string): Promise<string> {
   try {
-    const quoteUrl = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(normalizedSymbol)}`
-    const payload = (await fetchCachedJson(quoteUrl, MARKET_DATA_CACHE_TTL_SECONDS)) as {
-      quoteResponse?: {
-        result?: Array<{ shortName?: string; longName?: string }>
-      }
-    }
-    const entry = payload.quoteResponse?.result?.[0]
-    return entry?.shortName ?? entry?.longName ?? normalizedSymbol
+    const hits = await searchSymbols(normalizedSymbol, MARKET_DATA_CACHE_TTL_SECONDS)
+    const exact = hits.find(
+      (hit) => hit.symbol.toUpperCase() === normalizedSymbol.toUpperCase(),
+    )
+    const name = (exact ?? hits[0])?.name?.trim()
+    return name || normalizedSymbol
   } catch {
     return normalizedSymbol
   }

@@ -75,9 +75,9 @@ export function SymbolSearch({ disabled, label, placeholder, onSelect }: SymbolS
       />
 
       {open && (loading || results.length > 0) ? (
-        <ul className="search-suggestions" role="listbox">
+        <ul className="search-suggestions">
           {loading ? (
-            <li className="search-status">検索中…</li>
+            <li className="search-status" aria-live="polite">検索中…</li>
           ) : (
             results.map((hit) => (
               <li key={hit.symbol}>
@@ -95,8 +95,8 @@ export function SymbolSearch({ disabled, label, placeholder, onSelect }: SymbolS
       ) : null}
 
       {open && !loading && query.trim().length >= 2 && results.length === 0 ? (
-        <ul className="search-suggestions" role="listbox">
-          <li className="search-status">該当する銘柄が見つかりませんでした</li>
+        <ul className="search-suggestions">
+          <li className="search-status" aria-live="polite">該当する銘柄が見つかりませんでした</li>
         </ul>
       ) : null}
     </div>

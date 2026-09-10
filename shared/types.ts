@@ -166,22 +166,66 @@ export interface WatchlistEntry {
   sector: string
 }
 
+/** 東証の市場区分。ランキング表の「東証PRM/STD/GRT」から取得する。 */
+export type MarketSegment = 'プライム' | 'スタンダード' | 'グロース' | 'その他'
+
+/** 1単元（原則100株）を買うのに必要な金額と、その手が届くかどうか。 */
+export interface LotCost {
+  /** 売買単位（株）。日本株は原則100 */
+  sharesPerLot: number
+  /** 1単元の必要資金（円） */
+  costPerLot: number
+  /** 目安予算で1単元買えるか */
+  affordable: boolean
+}
+
+/**
+ * 目標株価と損切り水準。固定の +10% ではなく、その銘柄の
+ * 20日ボラティリティから見た5営業日の想定変動幅で算出する。
+ */
+export interface PriceTargets {
+  /** 5営業日の想定変動幅（標準偏差、比率） */
+  horizonSigma: number
+  targetPrice: number
+  stopPrice: number
+  /** 目標までの上昇率（比率） */
+  targetUpside: number
+  /** 損切りまでの下落率（比率、負値） */
+  stopDownside: number
+}
+
+/**
+ * 同じ銘柄の過去データで同じ分類条件が成立した日を探し、
+ * その後 5 営業日の値動きを集計した実績。標本が少なければ null。
+ */
+export interface HistoricalEdge {
+  samples: number
+  winRate: number
+  averageReturn: number
+  horizonDays: number
+}
+
 export interface CandidateItem {
   rank: number
   code: string
   name: string
-  sector?: string
+  segment: MarketSegment
   category: CandidateCategory
   categoryLabel: string
   close: number
   return1d: number
   return5d: number
   return20d: number
+  /** 当日の出来高（株） */
+  volume: number
+  /** 当日の売買代金（円）= 出来高 × 終値。流動性の目安 */
+  turnover: number
   reboundScore: number
   downtrendRisk: number
   riskBand: RiskBand
-  sharesFor50k: number
-  target10pct: number
+  lot: LotCost
+  targets: PriceTargets
+  historicalEdge: HistoricalEdge | null
   reasons: string[]
   cautions: string[]
 }
@@ -193,19 +237,26 @@ export interface CandidateCounts {
   skip: number
 }
 
+/** 候補一覧と併せて返す、実データに基づく当日の市場サマリ。 */
+export interface MarketSummary {
+  /** ランキングから発見した銘柄数 */
+  scanned: number
+  /** そのうち当日下落していた銘柄数 */
+  declining: number
+  /** 詳細分析した銘柄数 */
+  analyzed: number
+  /** 下落銘柄の平均下落率（比率、負値） */
+  averageDecline: number
+  /** 取得を途中で打ち切った場合 true（subrequest 予算超過など） */
+  partial: boolean
+}
+
 export interface CandidatesResponse {
   generatedAt: string
   registeredCount: number
   counts: CandidateCounts
+  summary: MarketSummary
   candidates: CandidateItem[]
-}
-
-export interface MarketNewsItem {
-  id: string
-  title: string
-  summary: string
-  time: string
-  tag?: string
 }
 
 export interface SymbolSearchHit {

@@ -38,7 +38,7 @@ export function GuideTab() {
         </div>
         <div className="guide-list">
           <GuideRow term={<span className="guide-chip">本日の候補</span>}>
-            日本株全体から本日値下がりした銘柄を集めた一覧です。相場によって毎日入れ替わります。上部のチップで「押し目・反発・危険・登録銘柄」に絞り込めます。
+            日本株全体から本日値下がりした銘柄を集めた一覧です。相場によって毎日入れ替わります。上部のチップで「押し目・反発・危険・登録銘柄」に絞り込めます。各行をタップすると詳細が開きます。
           </GuideRow>
           <GuideRow term={<span className="guide-chip">登録銘柄</span>}>
             <b>あなた自身が登録した銘柄</b>のこと。候補抽出タブ上部の検索や各カードの「登録」で追加、「登録解除」で削除できます。「登録銘柄」チップで自分の銘柄だけを表示できます。
@@ -73,21 +73,33 @@ export function GuideTab() {
             <span className="risk-band band-high">高</span>
             ）。高いほど下げが続くリスクが大きい、という意味です。
           </GuideRow>
-          <GuideRow term={<span className="guide-metric">5万円購入時<br />16株</span>}>
-            もし5万円ぶん買ったら何株になるかの概算です（実際の手数料などは含みません）。
+          <GuideRow term={<span className="guide-metric">1単元（100株）<br />17.2万円</span>}>
+            日本株は原則100株単位でしか買えません。その1単元を買うのに必要な金額です（手数料は含みません）。
           </GuideRow>
-          <GuideRow term={<span className="guide-metric">10%目標<br />3,313円</span>}>
-            現在値から10%上がったときの株価の目安です。利益確定ラインの参考にできます。
+          <GuideRow term={<span className="guide-metric">目標（5営業日）<br />3,313円</span>}>
+            その銘柄自身の値動きの荒さ（直近20日のボラティリティ）から見た、5営業日での上値の目安です。
+            値動きの小さい大型株と荒い小型株で同じ目標を置いても意味がないため、銘柄ごとに計算しています。
+          </GuideRow>
+          <GuideRow term={<span className="guide-metric">損切り目安<br />2,980円</span>}>
+            同じ考え方で求めた下値の目安です。買う前にここを割ったら撤退する、と決めておくために使います。
+          </GuideRow>
+          <GuideRow term={<span className="guide-metric">売買代金 / 出来高</span>}>
+            その日にどれだけ売買されたかの目安。少なすぎる銘柄は買値・売値が不利になりやすいため、
+            候補からは自動的に除外しています。
+          </GuideRow>
+          <GuideRow term={<span className="guide-chip">過去の同条件の実績</span>}>
+            <b>同じ銘柄の過去データ</b>で同じ条件が出た日を探し、その5営業日後に上がっていた割合と平均の値動きを表示します。
+            標本が少ないときは「集計できていません」と出ます。過去にそうだったというだけで、今回を保証するものではありません。
           </GuideRow>
           <GuideRow
             term={
               <span className="guide-buttons">
-                <span className="mini-button primary">分析</span>
+                <span className="mini-button primary">詳しく分析</span>
                 <span className="mini-button secondary">登録</span>
               </span>
             }
           >
-            「分析」で個別株調査タブへ移動して自動で詳しく調べます。「登録」で登録銘柄に追加（登録済みなら「登録解除」に変わります）。
+            「詳しく分析」で個別株調査タブへ移動して自動で詳しく調べます。「登録」で登録銘柄に追加（登録済みなら「登録解除」に変わります）。
           </GuideRow>
         </div>
       </section>
@@ -127,8 +139,8 @@ export function GuideTab() {
           <GuideRow term={<span className="guide-chip">モデル比較</span>}>
             4種類の予測モデルそれぞれの期待リターン・上昇確率・精度を並べた表です。
           </GuideRow>
-          <GuideRow term={<span className="guide-chip">投資メモ</span>}>
-            5万円で買った場合の株数・10%上昇時の目標株価・税引前／税引後の利益目安を表示します（税率20.315%で概算）。
+          <GuideRow term={<span className="guide-chip">売買の目安</span>}>
+            1単元（100株）の必要資金・目標株価・損切り目安・目標到達時の税引後利益を表示します（税率20.315%で概算）。
           </GuideRow>
           <GuideRow
             term={

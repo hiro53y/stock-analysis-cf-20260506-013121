@@ -1,4 +1,7 @@
-name = "stock-analysis-cf"
+# Cloudflare Pages の実プロジェクト名。GitHub 連携のビルドと `npm run deploy` の
+# 双方でこの名前が使われる。ローカルの package 名（stock-analysis-cf）とは別物で、
+# 食い違うと deploy 時に新しいプロジェクトが作られてしまう。
+name = "stock-analysis-cf-20260506-013121"
 pages_build_output_dir = "dist"
 compatibility_date = "2024-09-23"
 

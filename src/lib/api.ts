@@ -232,6 +232,7 @@ export async function fetchAnalysisStatus(
 
 const candidateCategorySchema = z.enum(['dip', 'rebound', 'danger', 'skip'])
 const riskBandSchema = z.enum(['low', 'mid', 'high'])
+const marketSegmentSchema = z.enum(['プライム', 'スタンダード', 'グロース', 'その他'])
 const candidatesResponseSchema = z.object({
   generatedAt: z.string(),
   registeredCount: z.number(),
@@ -241,23 +242,50 @@ const candidatesResponseSchema = z.object({
     danger: z.number(),
     skip: z.number(),
   }),
+  summary: z.object({
+    scanned: z.number(),
+    declining: z.number(),
+    analyzed: z.number(),
+    averageDecline: z.number(),
+    partial: z.boolean(),
+  }),
   candidates: z.array(
     z.object({
       rank: z.number(),
       code: z.string(),
       name: z.string(),
-      sector: z.string().optional(),
+      segment: marketSegmentSchema,
       category: candidateCategorySchema,
       categoryLabel: z.string(),
       close: z.number(),
       return1d: z.number(),
       return5d: z.number(),
       return20d: z.number(),
+      volume: z.number(),
+      turnover: z.number(),
       reboundScore: z.number(),
       downtrendRisk: z.number(),
       riskBand: riskBandSchema,
-      sharesFor50k: z.number(),
-      target10pct: z.number(),
+      lot: z.object({
+        sharesPerLot: z.number(),
+        costPerLot: z.number(),
+        affordable: z.boolean(),
+      }),
+      targets: z.object({
+        horizonSigma: z.number(),
+        targetPrice: z.number(),
+        stopPrice: z.number(),
+        targetUpside: z.number(),
+        stopDownside: z.number(),
+      }),
+      historicalEdge: z
+        .object({
+          samples: z.number(),
+          winRate: z.number(),
+          averageReturn: z.number(),
+          horizonDays: z.number(),
+        })
+        .nullable(),
       reasons: z.array(z.string()),
       cautions: z.array(z.string()),
     }),

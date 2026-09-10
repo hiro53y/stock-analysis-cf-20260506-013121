@@ -8,6 +8,14 @@ interface RateLimitBucket {
   createdAt: string
 }
 
+/**
+ * 固定ウィンドウの簡易レート制限。
+ *
+ * 既知の限界: 読み取り→加算→書き戻しの間に他のリクエストが割り込むと計数が漏れる。
+ * KV は結果整合性なので、同一 IP からの同時アクセスでは上限を超えて通ることがある。
+ * つまり「厳しすぎて正当な利用を弾く」方向ではなく「緩む」方向に倒れる設計。
+ * 濫用を厳密に止めたい場合は Cloudflare 側の Rate Limiting ルールを使うこと。
+ */
 export async function enforceRateLimit(
   env: Env,
   path: string,

@@ -5,15 +5,25 @@
     "Yu Gothic UI",
     sans-serif;
   color: #f4efe6;
-  background:
+  /*
+   * 背景は必ず単色を敷いたうえでグラデーションを重ね、`background-attachment: fixed` で
+   * ビューポートに固定する。以前は単色なしのグラデーションだけを指定していたため、
+   * 候補一覧のようにページが数千px以上になると背景が下まで届かず、
+   * 明るい文字色のまま地の白が出てスクロール後に画面が真っ白になっていた。
+   */
+  background-color: #0d1b22;
+  background-image:
     radial-gradient(circle at top left, rgba(242, 125, 66, 0.18), transparent 24%),
     radial-gradient(circle at top right, rgba(41, 161, 156, 0.18), transparent 22%),
     linear-gradient(180deg, #0d1b22 0%, #102b38 42%, #091419 100%);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  --panel: rgba(12, 24, 31, 0.78);
+  /* backdrop-filter をやめたため、パネルはほぼ不透明にして可読性を確保する */
+  --panel: rgba(12, 24, 31, 0.94);
   --panel-border: rgba(255, 255, 255, 0.1);
   --muted: #95aab7;
   --accent: #29a19c;
@@ -47,29 +57,24 @@ select {
   padding: 20px 16px 40px;
 }
 
-.hero-shell,
-.panel,
-.summary-card,
-.tab-button,
-.metric-pill {
-  backdrop-filter: blur(18px);
-}
+/*
+ * backdrop-filter は使わない。
+ * 候補一覧では .panel が数十個並ぶため、ぼかし1つにつき合成レイヤーが1枚増え、
+ * スマホでは描画が破綻（白紙化）してスクロールも重くなっていた。
+ * パネルは不透明色で塗って同等の見た目を出す。
+ */
 
 .hero-shell {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
-.hero-copy h1,
+.hero-shell h1,
 .panel-heading h2,
 .panel-heading h3 {
   margin: 0;
 }
 
-.hero-copy p:last-child,
+.hero-shell p,
 .panel-copy,
 .preview-meta,
 .disclaimer,
@@ -80,10 +85,19 @@ select {
   color: var(--muted);
 }
 
-.hero-copy h1 {
-  font-size: clamp(2rem, 5vw, 3.8rem);
-  line-height: 1;
-  margin-bottom: 10px;
+/*
+ * 見出しはスマホ幅で3行に折り返さない大きさに抑える。
+ * 以前は最大 3.8rem あり、375px 幅ではタイトルだけで1画面の1/4を占めていた。
+ */
+.hero-shell h1 {
+  font-size: clamp(1.35rem, 4.5vw, 2rem);
+  line-height: 1.25;
+  margin-bottom: 4px;
+}
+
+.hero-shell p {
+  margin: 0;
+  font-size: 0.88rem;
 }
 
 .eyebrow {
@@ -92,20 +106,6 @@ select {
   letter-spacing: 0.12em;
   font-size: 0.76rem;
   color: #cfc4af;
-}
-
-.hero-stat {
-  min-width: 180px;
-  padding: 14px 18px;
-  border-radius: 18px;
-  background: rgba(4, 12, 16, 0.55);
-  border: 1px solid var(--panel-border);
-}
-
-.hero-stat span {
-  display: block;
-  color: var(--muted);
-  margin-bottom: 6px;
 }
 
 .layout-grid {
@@ -117,6 +117,19 @@ select {
 .tab-stack {
   display: grid;
   gap: 18px;
+}
+
+/*
+ * グリッドの子は既定で min-content 幅を下回れない。
+ * モデル比較表は min-width: 620px を持つため、そのままだと
+ * .table-shell の overflow-x が効かず、スマホ幅でページ全体が横に広がる。
+ * 明示的に min-width: 0 を与えて、はみ出しを各スクロール領域に閉じ込める。
+ */
+.layout-grid > *,
+.content-column > *,
+.tab-stack > *,
+.chart-grid > * {
+  min-width: 0;
 }
 
 .panel {
@@ -503,10 +516,6 @@ select {
   gap: 8px;
 }
 
-.summary-title .flag {
-  color: var(--accent);
-}
-
 .refresh-button {
   border: 1px solid var(--panel-border);
   background: rgba(255, 255, 255, 0.06);
@@ -523,30 +532,34 @@ select {
   cursor: default;
 }
 
-.summary-stats {
+/* 当日の市場サマリ（実データの集計値のみ） */
+.market-summary {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 8px;
+  margin: 0;
 }
 
-.stat-cell {
+.market-stat {
   display: grid;
-  gap: 4px;
-  padding: 12px 8px;
-  border-radius: 14px;
+  gap: 2px;
+  padding: 10px 8px;
+  border-radius: 12px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
   text-align: center;
 }
 
-.stat-label {
+.market-stat dt {
   color: var(--muted);
-  font-size: 0.74rem;
+  font-size: 0.72rem;
 }
 
-.stat-value {
-  font-size: 1.35rem;
+.market-stat dd {
+  margin: 0;
+  font-size: 1.15rem;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .summary-updated {
@@ -557,11 +570,17 @@ select {
 }
 
 /* 絞り込みチップ */
+/* 絞り込みは一覧をスクロール中でも切り替えられるよう上端に固定する */
 .chip-bar {
   display: flex;
   gap: 8px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  padding: 8px 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #0d1b22;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .chip {
@@ -616,16 +635,22 @@ select {
   background: rgba(0, 0, 0, 0.18);
 }
 
-/* 候補カード */
+/*
+ * 候補カード。
+ * 既定では1行のサマリだけを表示し、詳細は details を開いたときに出す。
+ * 以前は全件を展開したまま積んでいたため、30件で縦13,000px を超えていた。
+ */
+.candidate-list {
+  display: grid;
+  gap: 8px;
+}
+
 .candidate-card {
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-left: 4px solid var(--accent);
-  border-radius: 20px;
-  padding: 16px;
-  display: grid;
-  gap: 12px;
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.16);
+  border-radius: 14px;
+  overflow: hidden;
 }
 
 .candidate-card.cat-dip {
@@ -638,46 +663,89 @@ select {
 
 .candidate-card.cat-danger {
   border-left-color: var(--danger);
-  background: linear-gradient(180deg, rgba(213, 107, 102, 0.12), var(--panel) 40%);
 }
 
 .candidate-card.cat-skip {
   border-left-color: rgba(255, 255, 255, 0.25);
 }
 
-.candidate-head {
+.candidate-summary-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding: 11px 14px;
+  cursor: pointer;
+  list-style: none;
 }
 
-.candidate-rank {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.1);
-  display: grid;
-  place-items: center;
-  font-weight: 700;
-  font-size: 0.9rem;
+.candidate-summary-row::-webkit-details-marker {
+  display: none;
 }
 
-.candidate-title {
+.candidate-summary-row:hover,
+.candidate-details[open] > .candidate-summary-row {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.candidate-summary-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.candidate-identity {
   flex: 1;
   min-width: 0;
+  display: grid;
 }
 
 .candidate-name {
-  margin: 0;
   font-weight: 700;
-  font-size: 1.05rem;
+  font-size: 0.95rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.candidate-code {
-  margin: 2px 0 0;
+.candidate-meta {
   color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.candidate-figures {
+  display: grid;
+  justify-items: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.candidate-close {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.candidate-delta {
   font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.candidate-detail {
+  display: grid;
+  gap: 12px;
+  padding: 4px 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.candidate-edge {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: #d9d2c4;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.candidate-edge.muted {
+  color: var(--muted);
 }
 
 .candidate-tag {
@@ -708,20 +776,6 @@ select {
   color: var(--muted);
 }
 
-.candidate-price {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.price-value {
-  font-size: 1.2rem;
-  font-weight: 700;
-}
-
-.price-value small,
 .metric-value small,
 .memo-value small {
   font-size: 0.75rem;
@@ -730,28 +784,36 @@ select {
   margin-left: 2px;
 }
 
-.delta-row {
-  display: flex;
-  gap: 12px;
-  font-size: 0.84rem;
-  color: var(--muted);
-}
-
-.delta-row b {
-  font-weight: 700;
-}
-
 .candidate-metrics {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
+  margin: 0;
 }
 
 .candidate-metric {
   background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
-  padding: 10px 8px;
-  text-align: center;
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+
+.candidate-metric dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  margin-bottom: 3px;
+}
+
+.candidate-metric dd {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-note {
+  margin-left: 6px;
+  font-size: 0.74rem;
+  font-weight: 600;
 }
 
 .metric-label {
@@ -833,57 +895,6 @@ select {
   border: 1px dashed rgba(255, 255, 255, 0.2);
   border-radius: 16px;
   padding: 13px 12px;
-}
-
-/* 市場ニュース */
-.news-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.news-more {
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-.news-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.news-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.news-item:last-child {
-  border-bottom: 0;
-}
-
-.news-title {
-  margin: 0 0 3px;
-  font-weight: 600;
-  font-size: 0.92rem;
-}
-
-.news-summary {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.news-time {
-  color: var(--muted);
-  font-size: 0.78rem;
-  white-space: nowrap;
 }
 
 .candidate-disclaimer {
@@ -1196,6 +1207,24 @@ select {
 .signal-pill.sell {
   background: rgba(213, 107, 102, 0.2);
   color: #ffb4aa;
+}
+
+.status-idle {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+}
+
+.memo-sub {
+  margin-left: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @media (min-width: 960px) {

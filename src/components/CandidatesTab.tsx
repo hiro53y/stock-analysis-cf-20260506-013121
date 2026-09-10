@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  CANDIDATE_CATEGORY_LABELS,
-  CANDIDATE_DISCLAIMER,
-  SAMPLE_MARKET_NEWS,
-} from '../../shared/constants'
+import { CANDIDATE_CATEGORY_LABELS, CANDIDATE_DISCLAIMER } from '../../shared/constants'
 import type {
   CandidateCategory,
   CandidateItem,
@@ -11,10 +7,9 @@ import type {
   SymbolSearchHit,
   WatchlistEntry,
 } from '../../shared/types'
-import { canonicalCode } from '../../shared/utils'
+import { canonicalCode, formatReturn } from '../../shared/utils'
 import { fetchCandidates } from '../lib/api'
 import { CandidateCard } from './CandidateCard'
-import { MarketNews } from './MarketNews'
 import { SymbolSearch } from './SymbolSearch'
 
 interface CandidatesTabProps {
@@ -29,14 +24,21 @@ type FilterKey = 'all' | CandidateCategory | 'registered'
 const FILTER_ORDER: FilterKey[] = ['all', 'dip', 'rebound', 'danger', 'registered']
 
 function filterLabel(key: FilterKey): string {
-  if (key === 'all') return '本日の候補'
+  if (key === 'all') return 'すべて'
   if (key === 'registered') return '登録銘柄'
   return CANDIDATE_CATEGORY_LABELS[key]
 }
 
 function formatTimestamp(iso: string): string {
   if (!iso) return '—'
-  return iso.slice(0, 16).replace('T', ' ')
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return '—'
+  return parsed.toLocaleString('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }: CandidatesTabProps) {
@@ -82,7 +84,7 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
     void loadCandidates()
   }, [loadCandidates])
 
-  // 登録銘柄の社名・業種でサーバー結果を上書き、登録判定用の集合も作る
+  // 登録銘柄の社名でサーバー結果を上書き、登録判定用の集合も作る
   const registrySet = useMemo(
     () => new Set(registry.map((entry) => canonicalCode(entry.code))),
     [registry],
@@ -97,8 +99,7 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
       const entry = registryByCode.get(canonicalCode(item.code))
       if (!entry) return item
       const name = entry.name && entry.name !== entry.code ? entry.name : item.name
-      const sector = entry.sector && entry.sector !== '—' ? entry.sector : item.sector
-      return { ...item, name, sector }
+      return { ...item, name }
     })
   }, [data, registryByCode])
 
@@ -108,7 +109,7 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
   )
 
   const counts = data?.counts ?? { dip: 0, rebound: 0, danger: 0, skip: 0 }
-  const totalCandidates = counts.dip + counts.rebound + counts.danger
+  const summary = data?.summary
   const registeredCandidates = useMemo(
     () => candidates.filter((item) => isRegistered(item.code)),
     [candidates, isRegistered],
@@ -132,19 +133,14 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
   }
 
   const handleRegisterCandidate = (item: CandidateItem) => {
-    onRegister({ code: canonicalCode(item.code), name: item.name, sector: item.sector ?? '—' })
+    onRegister({ code: canonicalCode(item.code), name: item.name, sector: '—' })
   }
 
   return (
     <div className="candidates-tab">
       <section className="panel candidate-summary">
         <div className="summary-top">
-          <h2 className="summary-title">
-            <span className="flag" aria-hidden="true">
-              ⚑
-            </span>
-            本日の候補
-          </h2>
+          <h2 className="summary-title">本日の候補</h2>
           <button
             type="button"
             className="refresh-button"
@@ -155,39 +151,38 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
           </button>
         </div>
 
-        <p className="summary-lead">
-          日本株全体から「本日値下がりした銘柄」を集め、押し目・反発・危険を自動で仕分けしています。
-        </p>
+        {/* 集計結果は実データのみ。取得できていない値は「—」を出し、数字を作らない。 */}
+        <dl className="market-summary" aria-live="polite">
+          <div className="market-stat">
+            <dt>走査した銘柄</dt>
+            <dd>{summary ? summary.scanned.toLocaleString('ja-JP') : '—'}</dd>
+          </div>
+          <div className="market-stat">
+            <dt>本日値下がり</dt>
+            <dd>{summary ? summary.declining.toLocaleString('ja-JP') : '—'}</dd>
+          </div>
+          <div className="market-stat">
+            <dt>平均下落率</dt>
+            <dd className="delta-down">
+              {summary && summary.declining > 0 ? formatReturn(summary.averageDecline) : '—'}
+            </dd>
+          </div>
+          <div className="market-stat">
+            <dt>詳細分析</dt>
+            <dd>{summary ? summary.analyzed.toLocaleString('ja-JP') : '—'}</dd>
+          </div>
+        </dl>
 
-        <div className="summary-stats">
-          <div className="stat-cell">
-            <span className="stat-label">候補</span>
-            <span className="stat-value">{data ? totalCandidates : '—'}</span>
-          </div>
-          <div className="stat-cell">
-            <span className="stat-label">押し目</span>
-            <span className="stat-value val-accent">{data ? counts.dip : '—'}</span>
-          </div>
-          <div className="stat-cell">
-            <span className="stat-label">反発</span>
-            <span className="stat-value val-positive">{data ? counts.rebound : '—'}</span>
-          </div>
-          <div className="stat-cell">
-            <span className="stat-label">危険</span>
-            <span className="stat-value val-danger">{data ? counts.danger : '—'}</span>
-          </div>
-          <div className="stat-cell">
-            <span className="stat-label">登録銘柄</span>
-            <span className="stat-value">{registry.length}</span>
-          </div>
-        </div>
-        <p className="summary-updated">最終更新 {formatTimestamp(data?.generatedAt ?? '')}</p>
+        <p className="summary-updated">
+          最終更新 {formatTimestamp(data?.generatedAt ?? '')}
+          {summary?.partial ? '（取得を一部省略しています）' : null}
+        </p>
       </section>
 
       <section className="panel register-search">
         <p className="register-search-title">銘柄を検索して登録</p>
         <p className="register-search-hint">
-          会社名で検索して「登録銘柄」に追加できます。登録すると下の「登録銘柄」で絞り込めます。
+          会社名で検索して「登録銘柄」に追加できます。登録した銘柄は候補に入らなくても必ず分析されます。
         </p>
         <SymbolSearch
           label="会社名または銘柄コードで検索"
@@ -201,6 +196,7 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
           <button
             key={key}
             type="button"
+            aria-pressed={key === filter}
             className={`chip chip-${key}${key === filter ? ' active' : ''}`}
             onClick={() => setFilter(key)}
           >
@@ -211,7 +207,7 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
       </nav>
 
       {error ? (
-        <section className="panel error-panel">
+        <section className="panel error-panel" role="alert">
           <p className="eyebrow">エラー</p>
           <h3>候補を取得できませんでした</h3>
           <p>{error}</p>
@@ -244,18 +240,20 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
         </section>
       ) : null}
 
-      {filtered.map((item) => (
-        <CandidateCard
-          key={item.code}
-          item={item}
-          isRegistered={isRegistered(item.code)}
-          onAnalyze={onAnalyze}
-          onRegister={handleRegisterCandidate}
-          onUnregister={onUnregister}
-        />
-      ))}
-
-      <MarketNews items={SAMPLE_MARKET_NEWS} />
+      {filtered.length > 0 ? (
+        <div className="candidate-list">
+          {filtered.map((item) => (
+            <CandidateCard
+              key={item.code}
+              item={item}
+              isRegistered={isRegistered(item.code)}
+              onAnalyze={onAnalyze}
+              onRegister={handleRegisterCandidate}
+              onUnregister={onUnregister}
+            />
+          ))}
+        </div>
+      ) : null}
 
       <p className="disclaimer candidate-disclaimer">{CANDIDATE_DISCLAIMER}</p>
     </div>

@@ -46,6 +46,24 @@ export function formatCompactNumber(value: number): string {
   return value.toLocaleString('ja-JP', { maximumFractionDigits: 0 })
 }
 
+/** 大きな金額を「1.7億円」「530万円」のように読みやすい単位で表す。 */
+export function formatYenScale(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  const abs = Math.abs(value)
+  if (abs >= 1e12) return `${(value / 1e12).toFixed(1)}兆円`
+  if (abs >= 1e8) return `${(value / 1e8).toFixed(1)}億円`
+  if (abs >= 1e4) return `${Math.round(value / 1e4).toLocaleString('ja-JP')}万円`
+  return `${formatCompactNumber(value)}円`
+}
+
+/** 株数を「32.2万株」「5,300株」のように表す。 */
+export function formatShareCount(value: number): string {
+  if (!Number.isFinite(value)) return '—'
+  if (Math.abs(value) >= 1e8) return `${(value / 1e8).toFixed(1)}億株`
+  if (Math.abs(value) >= 1e4) return `${(value / 1e4).toFixed(1)}万株`
+  return `${formatCompactNumber(value)}株`
+}
+
 export function formatDateLabel(date: string): string {
   const parsed = new Date(date)
   return `${parsed.getMonth() + 1}/${parsed.getDate()}`

@@ -8,67 +8,70 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { CAPITAL_GAINS_TAX_RATE, SAMPLE_BUDGET_YEN } from '../../shared/constants'
+import { computeLotCost, computePriceTargets, dailyVolatility } from '../../shared/analysis/targets'
+import {
+  CAPITAL_GAINS_TAX_RATE,
+  SAMPLE_BUDGET_YEN,
+  TARGET_HORIZON_DAYS,
+} from '../../shared/constants'
 import type { AnalysisResult } from '../../shared/types'
-import { formatCompactNumber } from '../../shared/utils'
+import { formatCompactNumber, formatReturn, formatYenScale } from '../../shared/utils'
 import { SummaryCards } from './SummaryCards'
 
 interface OverviewPanelProps {
   result: AnalysisResult
 }
 
+/**
+ * 売買の目安。日本株は100株単位でしか買えないため「必要資金」を起点にする。
+ * 目標株価はその銘柄自身のボラティリティから出す（固定の +10% は使わない）。
+ */
 function InvestmentMemo({ result }: { result: AnalysisResult }) {
-  const latestClose =
-    result.priceSeries.at(-1)?.close ??
-    result.forecastSeries.filter((point) => typeof point.actual === 'number').at(-1)?.actual ??
-    0
-
+  const closes = result.priceSeries.map((point) => point.close).filter(Number.isFinite)
+  const latestClose = closes.at(-1) ?? 0
   if (!latestClose) return null
 
-  const shares = SAMPLE_BUDGET_YEN / latestClose
-  const target10pct = latestClose * 1.1
-  const grossProfit = SAMPLE_BUDGET_YEN * 0.1
+  const lot = computeLotCost(latestClose, SAMPLE_BUDGET_YEN)
+  const targets = computePriceTargets(latestClose, dailyVolatility(closes, 20))
+  const grossProfit = lot.costPerLot * targets.targetUpside
   const netProfit = grossProfit * (1 - CAPITAL_GAINS_TAX_RATE)
-  const sharesText = shares < 1 ? shares.toFixed(2) : formatCompactNumber(Math.floor(shares))
 
   return (
     <section className="panel memo-panel">
       <div className="panel-heading compact">
-        <p className="eyebrow">投資メモ</p>
-        <h3>5万円で買った場合の目安</h3>
+        <p className="eyebrow">売買の目安</p>
+        <h3>1単元（{lot.sharesPerLot}株）で見た場合</h3>
       </div>
       <div className="memo-grid">
         <div className="memo-cell">
-          <p className="memo-label">5万円購入時</p>
+          <p className="memo-label">必要資金</p>
+          <p className="memo-value">{formatYenScale(lot.costPerLot)}</p>
+        </div>
+        <div className="memo-cell">
+          <p className="memo-label">目標株価（{TARGET_HORIZON_DAYS}営業日）</p>
           <p className="memo-value">
-            {sharesText}
-            <small>株</small>
+            {formatCompactNumber(targets.targetPrice)}
+            <small>円</small>
+            <span className="memo-sub delta-up">{formatReturn(targets.targetUpside)}</span>
           </p>
         </div>
         <div className="memo-cell">
-          <p className="memo-label">10%上昇時の目標株価</p>
+          <p className="memo-label">損切り目安</p>
           <p className="memo-value">
-            {formatCompactNumber(target10pct)}
+            {formatCompactNumber(targets.stopPrice)}
             <small>円</small>
+            <span className="memo-sub delta-down">{formatReturn(targets.stopDownside)}</span>
           </p>
         </div>
         <div className="memo-cell">
-          <p className="memo-label">税引前利益目安</p>
-          <p className="memo-value val-positive">
-            {formatCompactNumber(grossProfit)}
-            <small>円</small>
-          </p>
-        </div>
-        <div className="memo-cell">
-          <p className="memo-label">税引後利益目安</p>
-          <p className="memo-value val-positive">
-            {formatCompactNumber(netProfit)}
-            <small>円</small>
-          </p>
+          <p className="memo-label">目標到達時の税引後利益</p>
+          <p className="memo-value val-positive">{formatYenScale(netProfit)}</p>
         </div>
       </div>
       <p className="memo-note">
-        ※ 税率 {(CAPITAL_GAINS_TAX_RATE * 100).toFixed(3)}%（上場株式の譲渡益）で概算。手数料等は含みません。
+        ※ 目標・損切りは直近20日のボラティリティから求めた{TARGET_HORIZON_DAYS}営業日の想定変動幅（±
+        {(targets.horizonSigma * 100).toFixed(1)}%）に基づく目安です。到達を保証するものではありません。
+        利益は税率 {(CAPITAL_GAINS_TAX_RATE * 100).toFixed(3)}%（上場株式の譲渡益）で概算し、手数料等は含みません。
       </p>
     </section>
   )
