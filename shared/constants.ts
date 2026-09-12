@@ -8,7 +8,7 @@ import type {
 } from './types'
 
 export const APP_NAME = '株式意思決定支援アプリ'
-export const CACHE_VERSION = 'cf-2026-09-v2'
+export const CACHE_VERSION = 'cf-2026-09-v4'
 export const FORECAST_HORIZON_DAYS = 5
 export const HISTORY_RANGE = '3y'
 export const WALK_FORWARD_FOLDS = 5
@@ -67,15 +67,45 @@ export const RANKING_VOLUME_PAGES = 2 // 出来高ランキング（流動性の
 // spark は 1 リクエスト約20銘柄が上限のため、SHORTLIST_SIZE / SPARK_BATCH_CHUNK がリクエスト数になる
 export const SPARK_BATCH_CHUNK = 20
 export const SHORTLIST_SIZE = 60 // 履歴を取得して詳細分析する銘柄数（= 3 リクエスト）
-export const SPARK_HISTORY_RANGE = '6mo' // 簡易バックテストの標本を確保するため 6 か月
+// 「その銘柄自身の過去と比べて安いか」を見るには年単位の履歴が要る。
+// spark は 20銘柄 × 2年分を 1 リクエストで返すため、6か月から延ばしても取得回数は増えない。
+export const SPARK_HISTORY_RANGE = '2y'
 
-// 一次選抜の内訳。売買代金上位（大型株の浅い押し目）と下落率上位（反発・危険）の両方を拾う
+// ──────────────────────────────────────────
+// 割安さの計測
+// ──────────────────────────────────────────
+export const MA_LONG_PERIOD = 200 // 長期移動平均（営業日）
+export const WEEKS52_DAYS = 250 // 52週 ≒ 250営業日
+export const VALUATION_MIN_DAYS = 250 // これ未満の履歴では割安さを判定しない
+// 分布を数えるループの間引き幅。60銘柄×2年を全件回すと CPU 上限に触れるため。
+// 実測で全件計算との差はパーセンタイル1ポイント未満。
+export const VALUATION_SAMPLE_STEP = 5
+// RSI は末尾の値しか使わないので、全期間ではなくこの本数だけで逐次計算する
+export const RSI_WINDOW_DAYS = 60
+// 52週高値からこれだけ下げていれば「下落率の観点では最大限に割安」とみなす
+export const DRAWDOWN_FULL_CHEAP = 0.4
+// 過去2年の終値分布でこの割合以下なら「安値圏」
+export const CHEAP_RANGE_PERCENTILE = 0.3
+// 52週高値からこれ以上下げている銘柄は、短期的に下げ止まって見えても「要注意」に回す。
+// 半値以下まで売られた銘柄が安いのは、たいてい相応の理由がある（バリュートラップ）。
+// 候補から消すのではなく、ラベルで区別して利用者に判断させる。
+export const EXTREME_DRAWDOWN = -0.5
+
+// ──────────────────────────────────────────
+// 過去実績（銘柄詳細でのみ計算する）
+// ──────────────────────────────────────────
+export const HISTORICAL_WARMUP_DAYS = 200 // 分布が安定するまで判定に使わない
+export const PERCENTILE_BUCKETS = 256 // 累積カウント用の量子化バケット数
+// 隣接日は保有期間がほぼ重なり独立した観測にならないため、標本を間引く
+export const HISTORICAL_SAMPLE_STEP = 2
+
+// 一次選抜の内訳。売買代金上位（流動性のある主力株）と下落率上位の両方を拾う
 export const SHORTLIST_BY_TURNOVER = 30
 export const SHORTLIST_BY_DECLINE = 30
 // 売買代金がこれ未満の銘柄は、個人でも板が薄く実際には売買しにくいため候補から外す
 export const MIN_TURNOVER_YEN = 50_000_000
 
-export const CANDIDATE_PER_CATEGORY = 10 // 押し目/反発/危険 各カテゴリの表示上限
+export const CANDIDATE_PER_CATEGORY = 12 // 各カテゴリの表示上限
 export const CANDIDATES_CACHE_TTL_SECONDS = 60 * 10 // 候補一覧の鮮度
 export const CANDIDATES_STALE_TTL_SECONDS = 60 * 60 * 6 // 再計算に失敗しても出す許容範囲
 
@@ -83,26 +113,24 @@ export const CANDIDATES_STALE_TTL_SECONDS = 60 * 60 * 6 // 再計算に失敗し
 // 分類のしきい値
 // ──────────────────────────────────────────
 // 数値の根拠は docs/spec.md を参照。テストで境界値を固定している。
-export const DANGER_RISK_THRESHOLD = 65 // downtrendRisk がこれ以上なら「危険な下落」
+export const DANGER_RISK_THRESHOLD = 65 // downtrendRisk がこれ以上なら下落継続リスクが高い
 export const DANGER_DROP_5D = -0.07 // 5日で -7% 以上下げていれば危険寄り
 export const NEW_LOW_TOLERANCE = 0.005 // 20日安値からこの範囲内なら「安値更新中」
-// 反発候補は「調整局面で売られすぎ圏にある」ことを条件にする。
-// reboundScore はカテゴリ内の並び順に使い、分類そのものには使わない
-// （スコア閾値で仕分けると、当日下落を必須にした時点で該当がほぼ出なくなるうえ、
-//   なぜその分類なのかを利用者に説明できない）。
+// 売られすぎ圏の目安。理由文の生成に使う
 export const REBOUND_RSI_CEILING = 45
 export const UPTREND_DRAWDOWN_LIMIT = -0.02 // 20日騰落がこれ以上なら「基調は維持」とみなす
 export const RISK_BAND_HIGH = 65
 export const RISK_BAND_MID = 40
 
-// 目標株価・損切り水準は「20日ボラティリティから見た5営業日の想定変動幅」で出す。
+// 目標株価・損切り水準は「20日ボラティリティから見た想定変動幅」で出す。
 // 固定 +10% のような根拠のない数字は使わない。
 export const TARGET_SIGMA_MULTIPLIER = 1.5
 export const STOP_SIGMA_MULTIPLIER = 1.0
-export const TARGET_HORIZON_DAYS = 5
+// 想定保有期間は数週間〜数ヶ月。20営業日（約1か月）を基準にする。
+export const TARGET_HORIZON_DAYS = 20
 
 // 簡易バックテスト: 同じ銘柄の過去データで同条件が出た日を探し、その後の値動きを集計する
-export const HISTORICAL_LOOKFORWARD_DAYS = 5
+export const HISTORICAL_LOOKFORWARD_DAYS = 20
 export const HISTORICAL_MIN_SAMPLES = 5 // 標本がこれ未満なら実績を表示しない
 
 export const DEFAULT_JP_WATCHLIST: WatchlistEntry[] = [
@@ -121,10 +149,17 @@ export const DEFAULT_JP_WATCHLIST: WatchlistEntry[] = [
 ]
 
 export const CANDIDATE_CATEGORY_LABELS: Record<CandidateCategory, string> = {
-  dip: '押し目候補',
-  rebound: '反発候補',
-  danger: '危険な下落',
+  buy: '買い候補',
+  watch: '監視',
+  trap: '割安だが要注意',
   skip: '見送り',
+}
+
+export const CANDIDATE_CATEGORY_HINTS: Record<CandidateCategory, string> = {
+  buy: '安値圏まで下げ、下げ止まりの兆しがある',
+  watch: '安値圏だが、まだ下げている最中。下げ止まりを待つ',
+  trap: '52週高値から半値以下。安いのには相応の理由がある可能性',
+  skip: '安値圏ではない（今日下がっただけ）',
 }
 
 export const RISK_BAND_LABELS: Record<RiskBand, string> = {

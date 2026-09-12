@@ -10,7 +10,7 @@ import {
   SHORTLIST_BY_TURNOVER,
   SHORTLIST_SIZE,
 } from '../../shared/constants'
-import { computeCandidate, rankCandidates } from '../../shared/analysis/candidates'
+import { cheapnessScore, computeCandidate, rankCandidates } from '../../shared/analysis/candidates'
 import type { CandidateEntry } from '../../shared/analysis/candidates'
 import type {
   CandidateCategory,
@@ -42,13 +42,8 @@ function resolveRegistered(url: URL): string[] {
 
 type ScoredCandidate = Omit<CandidateItem, 'rank'>
 
-/** カテゴリ内のおすすめ順スコア（危険は下落継続リスク、それ以外は反発期待）。 */
-function categoryScore(item: ScoredCandidate): number {
-  return item.category === 'danger' ? item.downtrendRisk : item.reboundScore
-}
-
 /**
- * 各カテゴリ（押し目/反発/危険）をおすすめ上位から最大 max 件に絞る。
+ * 各カテゴリを割安な順に最大 max 件へ絞る。
  * 登録銘柄はユーザーの明示的な選択なので、上限を超えても常に残す。
  */
 function capPerCategory(
@@ -56,12 +51,12 @@ function capPerCategory(
   max: number,
   registeredCodes: Set<string>,
 ): ScoredCandidate[] {
-  const categories: CandidateCategory[] = ['dip', 'rebound', 'danger', 'skip']
+  const categories: CandidateCategory[] = ['buy', 'watch', 'trap', 'skip']
   const result: ScoredCandidate[] = []
   for (const category of categories) {
     const group = items
       .filter((item) => item.category === category)
-      .sort((a, b) => categoryScore(b) - categoryScore(a))
+      .sort((a, b) => cheapnessScore(b) - cheapnessScore(a))
     let count = 0
     for (const item of group) {
       const isRegistered = registeredCodes.has(item.code)
@@ -77,8 +72,9 @@ function capPerCategory(
 /**
  * 一次選抜。ランキングから取れた当日値だけで、履歴を取りにいく銘柄を絞り込む。
  *
- * 売買代金上位（大型株の浅い押し目が拾える）と下落率上位（反発・危険が拾える）の
+ * 売買代金上位（安値圏まで下げた主力株が拾える）と下落率上位（大きく崩れた銘柄が拾える）の
  * 両方から取ることで、片方に偏らないようにする。
+ * この時点では割安さは分からない（履歴がまだない）ため、判定は二次分析に任せる。
  */
 export function buildShortlist(
   rows: RankingRow[],

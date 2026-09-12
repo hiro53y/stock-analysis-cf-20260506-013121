@@ -17,6 +17,55 @@ import {
 import type { AnalysisResult } from '../../shared/types'
 import { formatCompactNumber, formatReturn, formatYenScale } from '../../shared/utils'
 import { SummaryCards } from './SummaryCards'
+import { TrackRecordBlock } from './StockDetailPanel'
+
+/**
+ * その銘柄自身の過去と比べた割安さ。候補一覧と同じ関数を使い、
+ * 一覧と個別分析で数字が食い違わないようにする。
+ */
+function ValuationBlock({ result }: { result: AnalysisResult }) {
+  // priceSeries は表示用に間引いてあるため、サーバー側が全履歴から計算した値を使う
+  const valuation = result.valuation
+  if (!valuation) return null
+
+  return (
+    <section className="panel memo-panel">
+      <div className="panel-heading compact">
+        <p className="eyebrow">割安さ</p>
+        <h3>この銘柄自身の過去と比べて</h3>
+      </div>
+      <div className="cheap-gauge">
+        <div
+          className="cheap-gauge-fill"
+          style={{ width: `${Math.max(2, Math.round(valuation.rangePercentile * 100))}%` }}
+        />
+        <span className="cheap-gauge-label">
+          過去のレンジで下位 {Math.round(valuation.rangePercentile * 100)}%
+        </span>
+      </div>
+      <div className="memo-grid">
+        <div className="memo-cell">
+          <p className="memo-label">200日線からの乖離</p>
+          <p className="memo-value">
+            {formatReturn(valuation.ma200Deviation)}
+            <span className="memo-sub">
+              下位{Math.round(valuation.ma200DeviationPercentile * 100)}%の深さ
+            </span>
+          </p>
+        </div>
+        <div className="memo-cell">
+          <p className="memo-label">52週高値から</p>
+          <p className="memo-value">{formatReturn(valuation.drawdownFrom52wHigh)}</p>
+        </div>
+      </div>
+      <p className="memo-note">
+        ※ 直近{valuation.sampleDays}営業日の終値の分布で見た位置です。
+        業種平均や絶対的な割安基準（PER何倍以下など）とは別の見方です。
+      </p>
+      {result.trackRecord ? <TrackRecordBlock record={result.trackRecord} /> : null}
+    </section>
+  )
+}
 
 interface OverviewPanelProps {
   result: AnalysisResult
@@ -48,7 +97,7 @@ function InvestmentMemo({ result }: { result: AnalysisResult }) {
           <p className="memo-value">{formatYenScale(lot.costPerLot)}</p>
         </div>
         <div className="memo-cell">
-          <p className="memo-label">目標株価（{TARGET_HORIZON_DAYS}営業日）</p>
+          <p className="memo-label">目標株価（約1か月・{TARGET_HORIZON_DAYS}営業日）</p>
           <p className="memo-value">
             {formatCompactNumber(targets.targetPrice)}
             <small>円</small>
@@ -69,8 +118,8 @@ function InvestmentMemo({ result }: { result: AnalysisResult }) {
         </div>
       </div>
       <p className="memo-note">
-        ※ 目標・損切りは直近20日のボラティリティから求めた{TARGET_HORIZON_DAYS}営業日の想定変動幅（±
-        {(targets.horizonSigma * 100).toFixed(1)}%）に基づく目安です。到達を保証するものではありません。
+        ※ 目標・損切りは直近20日のボラティリティから求めた約1か月（{TARGET_HORIZON_DAYS}営業日）の
+        想定変動幅（±{(targets.horizonSigma * 100).toFixed(1)}%）に基づく目安です。到達を保証するものではありません。
         利益は税率 {(CAPITAL_GAINS_TAX_RATE * 100).toFixed(3)}%（上場株式の譲渡益）で概算し、手数料等は含みません。
       </p>
     </section>
@@ -81,6 +130,8 @@ export function OverviewPanel({ result }: OverviewPanelProps) {
   return (
     <div className="tab-stack">
       <SummaryCards cards={result.summaryCards} />
+
+      <ValuationBlock result={result} />
 
       <InvestmentMemo result={result} />
 

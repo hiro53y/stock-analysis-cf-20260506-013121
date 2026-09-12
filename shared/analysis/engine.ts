@@ -1,3 +1,5 @@
+import { computeValuation } from './valuation'
+import { computeTrackRecord } from './track-record'
 import {
   FORECAST_HORIZON_DAYS,
   MIN_TRAINING_ROWS,
@@ -121,6 +123,10 @@ export function analyzeMarketData(input: {
     throw new Error('分析に必要な学習データが不足しています。')
   }
 
+  // 割安さと過去実績は候補一覧と同じ関数で計算する（一覧と個別分析で数字を食い違わせない）。
+  // priceSeries は表示用に間引いているため、必ず元の全履歴から求める。
+  const fullCloses = input.marketData.rows.map((row) => row.close)
+
   const outcomes = getModelOutcomes(dataset.featureNames, dataset.trainingRows, dataset.latestRow)
   const successful = outcomes.filter(
     (outcome) =>
@@ -243,5 +249,7 @@ export function analyzeMarketData(input: {
     rationale: signalDecision.rationale,
     riskFlags: signalDecision.riskFlags,
     progressSteps: ['データ取得', '特徴量生成', 'モデル学習', 'バックテスト', '説明可能性計算', '完了'],
+    valuation: computeValuation(fullCloses),
+    trackRecord: computeTrackRecord(fullCloses),
   }
 }

@@ -38,6 +38,19 @@ export function errorResponseFromUnknown(
   return errorResponse(fallbackMessage, fallbackStatus)
 }
 
+/**
+ * 外部サイトが返したHTTPステータスを取り出す。
+ *
+ * 呼び出し側にとって「404＝そのページが存在しない」と「500＝取得に失敗した」は意味が違う。
+ * HttpError は利用者へ返すステータス（502など）に正規化してしまうため、
+ * 上流の生のステータスは details に残しておく。
+ */
+export function upstreamStatusOf(error: unknown): number | undefined {
+  if (!(error instanceof HttpError)) return undefined
+  const details = error.details as { upstreamStatus?: unknown } | undefined
+  return typeof details?.upstreamStatus === 'number' ? details.upstreamStatus : undefined
+}
+
 export function getClientIp(request: Request): string {
   const cfConnecting = request.headers.get('cf-connecting-ip')
   if (cfConnecting) return cfConnecting

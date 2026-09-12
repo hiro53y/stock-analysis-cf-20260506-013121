@@ -7,6 +7,7 @@ import type {
   AnalysisStatusResponse,
   CandidatesResponse,
   MarketDataResponse,
+  StockDetail,
   SymbolSearchResponse,
   WatchlistEntry,
 } from '../../shared/types'
@@ -22,6 +23,26 @@ const signalSchema = z.enum(['BUY', 'WATCH', 'SELL', 'UNKNOWN'])
 const marketSchema = z.enum(['auto', 'JP', 'US'])
 const resolvedMarketSchema = z.enum(['JP', 'US'])
 const jobStatusSchema = z.enum(['queued', 'running', 'completed', 'error'])
+const valuationSchema = z.object({
+  rangePercentile: z.number(),
+  ma200Deviation: z.number(),
+  ma200DeviationPercentile: z.number(),
+  drawdownFrom52wHigh: z.number(),
+  score: z.number(),
+  sampleDays: z.number(),
+})
+
+const trackRecordSchema = z.object({
+  samples: z.number(),
+  horizonDays: z.number(),
+  winRate: z.number(),
+  averageReturn: z.number(),
+  averageDrawdown: z.number(),
+  baselineWinRate: z.number(),
+  baselineReturn: z.number(),
+  edge: z.number(),
+})
+
 const analysisResultStorageSchema = z.object({
   analysisId: z.string(),
   request: z.object({
@@ -150,6 +171,8 @@ const analysisResultStorageSchema = z.object({
   rationale: z.array(z.string()),
   riskFlags: z.array(z.string()),
   progressSteps: z.array(z.string()),
+  valuation: valuationSchema.nullable().optional(),
+  trackRecord: trackRecordSchema.nullable().optional(),
 })
 
 const analysisCreateResponseSchema = z.object({
@@ -230,16 +253,16 @@ export async function fetchAnalysisStatus(
   )
 }
 
-const candidateCategorySchema = z.enum(['dip', 'rebound', 'danger', 'skip'])
+const candidateCategorySchema = z.enum(['buy', 'watch', 'trap', 'skip'])
 const riskBandSchema = z.enum(['low', 'mid', 'high'])
 const marketSegmentSchema = z.enum(['プライム', 'スタンダード', 'グロース', 'その他'])
 const candidatesResponseSchema = z.object({
   generatedAt: z.string(),
   registeredCount: z.number(),
   counts: z.object({
-    dip: z.number(),
-    rebound: z.number(),
-    danger: z.number(),
+    buy: z.number(),
+    watch: z.number(),
+    trap: z.number(),
     skip: z.number(),
   }),
   summary: z.object({
@@ -263,9 +286,11 @@ const candidatesResponseSchema = z.object({
       return20d: z.number(),
       volume: z.number(),
       turnover: z.number(),
-      reboundScore: z.number(),
+      rsi14: z.number(),
+      distanceFromLow20: z.number(),
       downtrendRisk: z.number(),
       riskBand: riskBandSchema,
+      valuation: valuationSchema.nullable(),
       lot: z.object({
         sharesPerLot: z.number(),
         costPerLot: z.number(),
@@ -278,14 +303,6 @@ const candidatesResponseSchema = z.object({
         targetUpside: z.number(),
         stopDownside: z.number(),
       }),
-      historicalEdge: z
-        .object({
-          samples: z.number(),
-          winRate: z.number(),
-          averageReturn: z.number(),
-          horizonDays: z.number(),
-        })
-        .nullable(),
       reasons: z.array(z.string()),
       cautions: z.array(z.string()),
     }),
@@ -299,6 +316,70 @@ export async function fetchCandidates(symbols?: string[]): Promise<CandidatesRes
   if (!parsed.success) {
     console.error('fetchCandidates response schema mismatch', parsed.error.issues)
     throw new ApiError('候補レスポンスの形式が不正です。', 500)
+  }
+  return parsed.data
+}
+
+const analystConsensusSchema = z.object({
+  asOf: z.string(),
+  judgement: z.string(),
+  targetPrice: z.number(),
+  upside: z.number().optional(),
+  breakdown: z
+    .object({
+      strongBuy: z.number().optional(),
+      buy: z.number().optional(),
+      hold: z.number().optional(),
+      sell: z.number().optional(),
+      strongSell: z.number().optional(),
+    })
+    .optional(),
+  trend: z.array(z.object({ label: z.string(), targetPrice: z.number() })).optional(),
+  eps: z.object({ analyst: z.number().optional(), company: z.number().optional() }).optional(),
+  source: z.string(),
+  horizonNote: z.string(),
+})
+
+const stockDetailSchema = z.object({
+  code: z.string(),
+  name: z.string().optional(),
+  per: z.number().optional(),
+  pbr: z.number().optional(),
+  dividendYield: z.number().optional(),
+  dividendPerShare: z.number().optional(),
+  eps: z.number().optional(),
+  bps: z.number().optional(),
+  roe: z.number().optional(),
+  equityRatio: z.number().optional(),
+  marketCapMillionYen: z.number().optional(),
+  sharesPerLot: z.number().optional(),
+  minimumPurchaseYen: z.number().optional(),
+  earningsSummary: z.string().optional(),
+  earningsDisclosedAt: z.string().optional(),
+  health: z
+    .object({
+      profitability: z.string().optional(),
+      stability: z.string().optional(),
+      growth: z.string().optional(),
+    })
+    .optional(),
+  trackRecord: trackRecordSchema.optional(),
+  analyst: analystConsensusSchema.optional(),
+  analystCoverage: z.enum(['covered', 'none', 'unavailable']).optional(),
+  partial: z.boolean(),
+})
+
+/**
+ * 銘柄1件の参考指標・業績評価・過去実績を取得する。
+ * 一覧では取らず、利用者がカードを開いたときだけ呼ぶ（1銘柄1リクエストのため）。
+ */
+export async function fetchStockDetail(code: string, signal?: AbortSignal): Promise<StockDetail> {
+  const normalized = canonicalCode(code).replace(/\.T$/i, '')
+  const raw = await requestJson<unknown>(`/api/stock/${encodeURIComponent(normalized)}`, { signal })
+  const parsed = stockDetailSchema.safeParse(raw)
+  if (!parsed.success) {
+    console.error('fetchStockDetail response schema mismatch', parsed.error.issues)
+    throw new ApiError('銘柄情報の形式が不正です。', 500)
   }
   return parsed.data
 }

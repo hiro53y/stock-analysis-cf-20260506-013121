@@ -67,7 +67,10 @@ export async function fetchCachedText(
     )
   }
   if (!response.ok) {
-    throw new HttpError(`データ取得に失敗しました。HTTP ${response.status}`, 502)
+    // 404 は「そのページが存在しない」という情報であり、呼び出し側で扱いを変えられるよう残す
+    throw new HttpError(`データ取得に失敗しました。HTTP ${response.status}`, 502, {
+      upstreamStatus: response.status,
+    })
   }
 
   if (cacheApi) {

@@ -20,6 +20,7 @@ const apiMocks = vi.hoisted(() => ({
   persistLastResult: vi.fn(),
   startAnalysis: vi.fn(),
   fetchCandidates: vi.fn(),
+  fetchStockDetail: vi.fn(),
   fetchSymbolSearch: vi.fn(),
   loadRegistry: vi.fn(),
   saveRegistry: vi.fn(),
@@ -136,10 +137,11 @@ describe('App', () => {
     apiMocks.fetchCandidates.mockResolvedValue({
       generatedAt: '2026-04-16T06:55:00.000Z',
       registeredCount: 0,
-      counts: { dip: 0, rebound: 0, danger: 0, skip: 0 },
+      counts: { buy: 0, watch: 0, trap: 0, skip: 0 },
       summary: { scanned: 0, declining: 0, analyzed: 0, averageDecline: 0, partial: false },
       candidates: [],
     })
+    apiMocks.fetchStockDetail.mockResolvedValue({ code: '7203.T', partial: true })
     apiMocks.fetchSymbolSearch.mockResolvedValue({ query: '', results: [] })
     apiMocks.loadRegistry.mockReturnValue([])
     apiMocks.saveRegistry.mockImplementation(() => undefined)

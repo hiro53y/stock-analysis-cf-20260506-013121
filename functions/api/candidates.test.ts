@@ -3,6 +3,7 @@ import { onRequestGet } from './candidates'
 import { buildShortlist } from './candidates'
 import { parseRankingRows, type RankingRow } from './lib/jp-ranking'
 import {
+  CHEAP_RANGE_PERCENTILE,
   RANKING_DOWN_PAGES,
   RANKING_VOLUME_PAGES,
   SHORTLIST_SIZE,
@@ -46,14 +47,26 @@ function rankingPageHtml(rowCount = 50): string {
   return `<html><body><table>${rows.join('')}</table></body></html>`
 }
 
-/** spark の応答（シンボルをキーにしたフラットマップ形式） */
+/**
+ * spark の応答（シンボルをキーにしたフラットマップ形式）。
+ * 割安判定には2年分の履歴が要るので、高値をつけたあと下げて
+ * 安値圏で下げ止まった形（＝買い候補になる形）を約500本で作る。
+ */
 function sparkPayload(symbols: string[]): string {
   const payload: Record<string, { symbol: string; close: number[] }> = {}
   for (const symbol of symbols) {
     const closes: number[] = []
     let value = 500
-    for (let index = 0; index < 120; index += 1) {
-      value *= index % 6 === 5 ? 0.99 : 1.005
+    for (let index = 0; index < 250; index += 1) {
+      value *= 1.004
+      closes.push(value)
+    }
+    for (let index = 0; index < 230; index += 1) {
+      value *= 0.997
+      closes.push(value)
+    }
+    for (let index = 0; index < 20; index += 1) {
+      value *= 1.003
       closes.push(value)
     }
     payload[symbol] = { symbol, close: closes }
@@ -122,17 +135,24 @@ describe('GET /api/candidates', () => {
     expect(sparkCalls).toBeLessThanOrEqual(Math.ceil(SHORTLIST_SIZE / SPARK_BATCH_CHUNK))
   })
 
-  it('候補はすべて当日下落している（画面の説明と一致する）', async () => {
+  it('候補はすべて当日下落しており、割安と判定されている', async () => {
     const context = createContext('https://example.com/api/candidates', '203.0.113.2')
     const response = await onRequestGet(context as never)
     const payload = (await response.json()) as {
-      candidates: Array<{ return1d: number; category: string }>
+      candidates: Array<{
+        return1d: number
+        category: string
+        valuation: { rangePercentile: number } | null
+      }>
       summary: { scanned: number; declining: number; analyzed: number }
     }
 
     expect(payload.candidates.length).toBeGreaterThan(0)
     for (const candidate of payload.candidates) {
       expect(candidate.return1d).toBeLessThan(0)
+      // 「今日下がっただけ」の銘柄を候補にしない（割安さが主軸）
+      expect(candidate.valuation).not.toBeNull()
+      expect(candidate.valuation?.rangePercentile).toBeLessThanOrEqual(CHEAP_RANGE_PERCENTILE)
     }
     expect(payload.summary.scanned).toBeGreaterThan(0)
     expect(payload.summary.analyzed).toBeGreaterThan(0)

@@ -128,7 +128,9 @@ select {
 .layout-grid > *,
 .content-column > *,
 .tab-stack > *,
-.chart-grid > * {
+.chart-grid > *,
+.candidates-tab > *,
+.candidate-list > * {
   min-width: 0;
 }
 
@@ -611,17 +613,17 @@ select {
   font-weight: 700;
 }
 
-.chip-dip.active {
+.chip-buy.active {
   background: rgba(41, 161, 156, 0.9);
   color: #042027;
 }
 
-.chip-rebound.active {
+.chip-watch.active {
   background: rgba(120, 215, 174, 0.9);
   color: #042027;
 }
 
-.chip-danger.active {
+.chip-trap.active {
   background: rgba(213, 107, 102, 0.9);
   color: #2a0f0d;
 }
@@ -653,15 +655,15 @@ select {
   overflow: hidden;
 }
 
-.candidate-card.cat-dip {
+.candidate-card.cat-buy {
   border-left-color: var(--accent);
 }
 
-.candidate-card.cat-rebound {
-  border-left-color: var(--positive);
+.candidate-card.cat-watch {
+  border-left-color: var(--accent-warm);
 }
 
-.candidate-card.cat-danger {
+.candidate-card.cat-trap {
   border-left-color: var(--danger);
 }
 
@@ -756,17 +758,17 @@ select {
   white-space: nowrap;
 }
 
-.tag-dip {
+.tag-buy {
   background: rgba(41, 161, 156, 0.18);
   color: #7fe0dc;
 }
 
-.tag-rebound {
-  background: rgba(120, 215, 174, 0.18);
-  color: var(--positive);
+.tag-watch {
+  background: rgba(242, 125, 66, 0.18);
+  color: #ffc39c;
 }
 
-.tag-danger {
+.tag-trap {
   background: rgba(213, 107, 102, 0.2);
   color: #ffb4aa;
 }
@@ -1214,10 +1216,318 @@ select {
   color: var(--muted);
 }
 
+/* ──────────────────────────────────────────
+   判断シート（候補カードを開いたときの中身）
+   ────────────────────────────────────────── */
+.sheet-block {
+  display: grid;
+  gap: 8px;
+}
+
+.sheet-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #cfc4af;
+  letter-spacing: 0.04em;
+}
+
+.sheet-note {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.sheet-note.muted,
+.candidate-edge.muted {
+  color: var(--muted);
+}
+
+.secondary-button.compact {
+  padding: 12px 16px;
+  min-height: 44px;
+  font-size: 0.84rem;
+  justify-self: start;
+}
+
+/* 割安さのゲージ。左端が最安値、右端が最高値 */
+.cheap-gauge {
+  position: relative;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+.cheap-gauge-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, rgba(41, 161, 156, 0.55), rgba(41, 161, 156, 0.2));
+}
+
+.cheap-gauge-label {
+  position: relative;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+/* 1行サマリに出す安値圏バッジ */
+.candidate-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.candidate-cheap {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(41, 161, 156, 0.18);
+  color: #7fe0dc;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+/* 過去実績 */
+.track-record {
+  display: grid;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.track-lead {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+/* 決算要約と業績評価 */
+.earnings-summary {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+  color: #d9d2c4;
+}
+
+.earnings-label {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.health-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: #d9d2c4;
+}
+
+.health-list b {
+  color: #cfc4af;
+  margin-right: 4px;
+}
+
 .memo-sub {
   margin-left: 6px;
   font-size: 0.78rem;
   font-weight: 600;
+}
+
+
+/* ──────────────────────────────────────────
+   並び順・絞り込み
+   ────────────────────────────────────────── */
+.list-controls {
+  /* チップ列は overflow-x で横に流すので、グリッドの子として縮めるようにする */
+  min-width: 0;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #0d1b22;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 8px;
+}
+
+/* .chip-bar 単体の sticky は .list-controls に移したので解除する */
+.list-controls .chip-bar {
+  position: static;
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.sort-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.sort-bar label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.sort-bar select {
+  width: auto;
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: 0.86rem;
+}
+
+.chip-skip.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #f4efe6;
+}
+
+/* ──────────────────────────────────────────
+   外部サイトへのリンク
+   ────────────────────────────────────────── */
+.external-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.external-links a {
+  display: grid;
+  gap: 2px;
+  /* タップ領域を十分に取る */
+  min-height: 46px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--panel-border);
+  color: #f4efe6;
+  text-decoration: none;
+}
+
+.external-links a:hover,
+.external-links a:focus-visible {
+  background: rgba(41, 161, 156, 0.16);
+  border-color: rgba(41, 161, 156, 0.5);
+}
+
+.external-link-label {
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+/* 外部サイトであることが分かるようにする */
+.external-link-label::after {
+  content: " ↗";
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.external-link-hint {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* ──────────────────────────────────────────
+   アナリスト評価
+   ────────────────────────────────────────── */
+.analyst-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.analyst-judge {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.judge-buy {
+  background: rgba(120, 215, 174, 0.18);
+  color: var(--positive);
+}
+
+.judge-hold {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--muted);
+}
+
+.judge-sell {
+  background: rgba(213, 107, 102, 0.2);
+  color: #ffb4aa;
+}
+
+.analyst-target {
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.analyst-voters {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #d9d2c4;
+}
+
+.analyst-trend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.analyst-trend small {
+  color: var(--muted);
+  font-weight: 400;
+  margin-right: 2px;
+}
+
+/* 長い決算文は既定で畳む */
+.earnings-details > summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: #cfc4af;
+  padding: 6px 0;
+}
+
+.earnings-details[open] > summary {
+  margin-bottom: 6px;
+}
+
+.earnings-details .earnings-summary,
+.earnings-details .health-list {
+  margin-bottom: 8px;
+}
+
+/* 展開時の縦を詰める。開いたカードが2画面を超えると一覧に戻りにくい */
+.candidate-metrics.compact {
+  grid-template-columns: repeat(auto-fit, minmax(116px, 1fr));
+  gap: 6px;
+}
+
+.candidate-metrics.compact .candidate-metric {
+  padding: 7px 9px;
+}
+
+.candidate-metrics.compact dd {
+  font-size: 0.88rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

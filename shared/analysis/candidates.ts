@@ -1,26 +1,27 @@
 import {
   CANDIDATE_CATEGORY_LABELS,
+  CHEAP_RANGE_PERCENTILE,
   DANGER_DROP_5D,
   DANGER_RISK_THRESHOLD,
-  HISTORICAL_LOOKFORWARD_DAYS,
-  HISTORICAL_MIN_SAMPLES,
+  EXTREME_DRAWDOWN,
   NEW_LOW_TOLERANCE,
   REBOUND_RSI_CEILING,
   RISK_BAND_HIGH,
   RISK_BAND_MID,
+  RSI_WINDOW_DAYS,
   SAMPLE_BUDGET_YEN,
-  UPTREND_DRAWDOWN_LIMIT,
 } from '../constants'
 import type {
   CandidateCategory,
   CandidateCounts,
   CandidateItem,
-  HistoricalEdge,
   MarketSegment,
   RiskBand,
+  ValuationSnapshot,
 } from '../types'
 import { clamp, formatReturn } from '../utils'
 import { computeLotCost, computePriceTargets, dailyVolatility } from './targets'
+import { computeValuation } from './valuation'
 
 export interface CandidateEntry {
   code: string
@@ -38,7 +39,7 @@ export interface CandidateToday {
 export interface CandidateSource {
   entry: CandidateEntry
   today: CandidateToday
-  /** spark 由来の日次終値（古い→新しい順） */
+  /** spark 由来の日次終値（古い→新しい順、2年分） */
   closes: number[]
 }
 
@@ -71,41 +72,36 @@ function returnOver(closes: number[], lookback: number): number {
 }
 
 /**
- * Wilder 方式の RSI を各日について 1 パスで求める。
- * 戻り値は closes と同じ長さで、ウォームアップ前は 50（中立）。
+ * Wilder 方式の RSI（0〜100）を末尾値で返す。
  *
- * 過去の同条件を探すときに毎日 RSI を再計算すると O(n^2) になり、
- * Cloudflare Workers の CPU 時間（無料プランで 10ms）に収まらないため、
- * 逐次更新して系列として持つ。
+ * 履歴が2年（約480本）あっても末尾の値しか使わないため、直近 RSI_WINDOW_DAYS 本だけで
+ * 逐次計算する。全期間を回すと 60銘柄で CPU 時間が跳ね上がり、
+ * Cloudflare の1リクエスト10ms（無料プラン）に収まらなくなる。
+ * Wilder の平滑化は指数的に収束するので、60本あれば末尾値は十分に安定する。
  */
-export function rsiSeries(closes: number[], period = 14): number[] {
-  const values = new Array<number>(closes.length).fill(50)
-  if (closes.length <= period) return values
+export function computeRsi(closes: number[], period = 14, window = RSI_WINDOW_DAYS): number {
+  const n = closes.length
+  const start = Math.max(1, n - window)
+  if (n - start <= period) return 50
 
   let gains = 0
   let losses = 0
-  for (let index = 1; index <= period; index += 1) {
+  for (let index = start; index < start + period; index += 1) {
     const delta = closes[index] - closes[index - 1]
     gains += Math.max(delta, 0)
     losses += Math.max(-delta, 0)
   }
   let averageGain = gains / period
   let averageLoss = losses / period
-  values[period] = averageLoss === 0 ? 100 : 100 - 100 / (1 + averageGain / averageLoss)
 
-  for (let index = period + 1; index < closes.length; index += 1) {
+  for (let index = start + period; index < n; index += 1) {
     const delta = closes[index] - closes[index - 1]
     averageGain = (averageGain * (period - 1) + Math.max(delta, 0)) / period
     averageLoss = (averageLoss * (period - 1) + Math.max(-delta, 0)) / period
-    values[index] = averageLoss === 0 ? 100 : 100 - 100 / (1 + averageGain / averageLoss)
   }
 
-  return values
-}
-
-/** Wilder 方式の RSI（0〜100）を末尾値で返す */
-function computeRsi(closes: number[], period = 14): number {
-  return rsiSeries(closes, period)[closes.length - 1]
+  if (averageLoss === 0) return 100
+  return 100 - 100 / (1 + averageGain / averageLoss)
 }
 
 /**
@@ -142,31 +138,6 @@ function buildMetrics(closes: number[], today: CandidateToday): CandidateMetrics
   }
 }
 
-/**
- * 反発期待スコア（0〜100）。
- *
- * 候補はすべて「当日値下がりした銘柄」なので、当日の下げ自体を大きく減点すると
- * 反発候補が一件も出なくなる。売られすぎ（RSI）と、20日安値から離れて
- * 下げ止まっていることを主な加点材料にし、下げ続けている度合いを減点する。
- */
-export function computeReboundScore(m: CandidateMetrics): number {
-  return Math.round(
-    clamp(
-      45 +
-        // 売られすぎほど反発余地がある（RSI30 で +12、RSI20 で +18）
-        (50 - m.rsi14) * 0.6 +
-        // 20日安値から離れているほど下げ止まりの形（最大 +10）
-        clamp(m.distanceFromLow20 * 100, 0, 10) * 1.0 -
-        // 直近5日で下げ続けているほど反発は遠い（最大 -7.5）
-        clamp(-m.return5d * 100, 0, 15) * 0.5 -
-        // 当日の下げが急なほど、まだ落ちている最中の可能性（最大 -5）
-        clamp(-m.return1d * 100, 0, 5) * 1.0,
-      0,
-      100,
-    ),
-  )
-}
-
 export function computeDowntrendRisk(m: CandidateMetrics): number {
   return Math.round(
     clamp(
@@ -189,151 +160,131 @@ function toRiskBand(risk: number): RiskBand {
 }
 
 /**
- * 候補を「押し目 / 反発 / 危険 / 見送り」に仕分ける。
- *
- * 画面では「本日値下がりした銘柄を集める」と説明しているため、
- * 押し目・反発はいずれも当日下落を必須条件にする。
- *
- * 分類はスコアの閾値ではなく、利用者に言葉で説明できる条件で行う。
- * reboundScore はカテゴリ内の並び順にだけ使う。
+ * 下げ止まりの兆候があるか。
+ * 安値を更新し続けている、あるいは直近5日で崩れている間は「まだ落ちている最中」とみなす。
  */
-export function classify(m: CandidateMetrics, downtrendRisk: number): CandidateCategory {
-  const makingNewLows = m.distanceFromLow20 <= NEW_LOW_TOLERANCE
-  if (downtrendRisk >= DANGER_RISK_THRESHOLD || (m.return5d <= DANGER_DROP_5D && makingNewLows)) {
-    return 'danger'
-  }
-
-  // 当日上昇している銘柄は「本日安くなった株」ではないため候補にしない
-  if (m.return1d >= 0) return 'skip'
-
-  // 上昇基調が続いているなかでの一時的な下げ = 押し目
-  if (m.sma5 > m.sma20 && m.return20d > UPTREND_DRAWDOWN_LIMIT) return 'dip'
-
-  // 調整局面で売られすぎ圏にあり、危険ほどは崩れていない = 反発
-  if (m.return20d < 0 && m.rsi14 <= REBOUND_RSI_CEILING) return 'rebound'
-
-  return 'skip'
+function isStabilizing(m: CandidateMetrics): boolean {
+  const notMakingNewLows = m.distanceFromLow20 > NEW_LOW_TOLERANCE
+  const notFreeFalling = m.return5d > DANGER_DROP_5D
+  return notMakingNewLows && notFreeFalling
 }
 
 /**
- * 同じ銘柄の過去データで同じ条件が成立した日を探し、その後
- * HISTORICAL_LOOKFORWARD_DAYS 営業日の値動きを集計する。
+ * 候補を仕分ける。主軸は「その銘柄自身の過去と比べて安いか」。
  *
- * 外部データの追加取得は不要（spark で取得済みの履歴だけで完結する）。
- * 判定は現在の分類と同じ骨格を使うが、1日あたり O(1) で回せるよう
- * 移動平均を逐次計算した簡易版にしている。
+ * 「今日下がった」は候補の入口条件でしかない。安値圏でない銘柄をいくら並べても
+ * 割安株を探す助けにならないため、割安でなければ見送りにする。
+ * 判定はスコアの閾値ではなく、利用者に言葉で説明できる条件で書く。
  */
-export function computeHistoricalEdge(
-  closes: number[],
-  category: CandidateCategory,
-): HistoricalEdge | null {
-  if (category === 'skip' || closes.length < 30 + HISTORICAL_LOOKFORWARD_DAYS) return null
+export function classify(
+  m: CandidateMetrics,
+  valuation: ValuationSnapshot | null,
+  downtrendRisk: number,
+): CandidateCategory {
+  // 当日上昇している銘柄は「本日安くなった株」ではないため候補にしない
+  if (m.return1d >= 0) return 'skip'
 
-  const forwardReturns: number[] = []
-  const lastEvaluable = closes.length - 1 - HISTORICAL_LOOKFORWARD_DAYS
-  const rsi = rsiSeries(closes)
+  // 履歴が足りず割安さを判定できない銘柄は、安いと言い切れないので出さない
+  if (!valuation) return 'skip'
+  if (valuation.rangePercentile > CHEAP_RANGE_PERCENTILE) return 'skip'
 
-  for (let index = 25; index <= lastEvaluable; index += 1) {
-    const close = closes[index]
-    const previous = closes[index - 1]
-    if (!close || !previous) continue
+  // 52週高値から半値以下。短期的に下げ止まって見えても、ここまで売られたのは
+  // たいてい相応の理由がある。「待てば戻る」類の下げとは区別する。
+  if (valuation.drawdownFrom52wHigh <= EXTREME_DRAWDOWN) return 'trap'
 
-    const return1d = close / previous - 1
-    const return5d = closes[index - 5] ? close / closes[index - 5] - 1 : 0
-    const return20d = closes[index - 20] ? close / closes[index - 20] - 1 : 0
+  // まだ落ちている最中。安くても、下げ止まりを確認してから検討する
+  if (downtrendRisk >= DANGER_RISK_THRESHOLD || !isStabilizing(m)) return 'watch'
 
-    let sum5 = 0
-    for (let offset = 0; offset < 5; offset += 1) sum5 += closes[index - offset]
-    let sum20 = 0
-    for (let offset = 0; offset < 20; offset += 1) sum20 += closes[index - offset]
-    const sma5 = sum5 / 5
-    const sma20 = sum20 / 20
-
-    // 現在の分類ルール（classify）と同じ条件で過去の該当日を探す
-    let matches = false
-    if (category === 'dip') {
-      matches = return1d < 0 && sma5 > sma20 && return20d > UPTREND_DRAWDOWN_LIMIT
-    } else if (category === 'rebound') {
-      matches =
-        return1d < 0 &&
-        return20d < 0 &&
-        !(sma5 > sma20 && return20d > UPTREND_DRAWDOWN_LIMIT) &&
-        rsi[index] <= REBOUND_RSI_CEILING
-    } else if (category === 'danger') {
-      matches = return5d <= DANGER_DROP_5D
-    }
-    if (!matches) continue
-
-    const future = closes[index + HISTORICAL_LOOKFORWARD_DAYS]
-    if (!future) continue
-    forwardReturns.push(future / close - 1)
-  }
-
-  if (forwardReturns.length < HISTORICAL_MIN_SAMPLES) return null
-
-  const wins = forwardReturns.filter((value) => value > 0).length
-  const total = forwardReturns.reduce((sum, value) => sum + value, 0)
-
-  return {
-    samples: forwardReturns.length,
-    winRate: wins / forwardReturns.length,
-    averageReturn: total / forwardReturns.length,
-    horizonDays: HISTORICAL_LOOKFORWARD_DAYS,
-  }
+  // 安値圏で下げ止まりの兆しがあり、下落継続リスクも高くない
+  return 'buy'
 }
 
 /**
  * その銘柄で実際に成立した条件だけを挙げる。
  * 全銘柄に同じ文言を並べても判断材料にならないため、該当したものだけを返す。
  */
-function buildReasons(category: CandidateCategory, m: CandidateMetrics): string[] {
+function buildReasons(
+  category: CandidateCategory,
+  m: CandidateMetrics,
+  valuation: ValuationSnapshot | null,
+): string[] {
   const reasons: string[] = []
+  if (category === 'skip' || !valuation) return reasons
 
-  if (category === 'dip') {
+  reasons.push(
+    `過去2年の値動きのなかで下位${(valuation.rangePercentile * 100).toFixed(0)}%の安さ`,
+  )
+
+  if (valuation.ma200Deviation < -0.05) {
     reasons.push(
-      m.close >= m.sma25
-        ? `25日線(${Math.round(m.sma25).toLocaleString('ja-JP')}円)を上回ったまま${formatReturn(m.return1d)}`
-        : `25日線付近まで${formatReturn(m.return1d)}の押し`,
+      `200日線から${formatReturn(valuation.ma200Deviation)}（過去2年で下位${(
+        valuation.ma200DeviationPercentile * 100
+      ).toFixed(0)}%の深さ）`,
     )
-    if (m.return20d > 0) reasons.push(`20日騰落は${formatReturn(m.return20d)}とプラス圏`)
-    if (m.return5d < 0) reasons.push(`直近5日で${formatReturn(m.return5d)}の調整`)
-    if (m.rsi14 < 45) reasons.push(`RSI14は${m.rsi14.toFixed(0)}で過熱感はない`)
-    if (m.distanceFromHigh20 > -0.03) reasons.push('20日高値圏を維持')
-  } else if (category === 'rebound') {
-    if (m.rsi14 < 35) reasons.push(`RSI14は${m.rsi14.toFixed(0)}で売られすぎ圏`)
-    else if (m.rsi14 < 45) reasons.push(`RSI14は${m.rsi14.toFixed(0)}で下げ渋り`)
-    if (m.distanceFromLow20 > NEW_LOW_TOLERANCE) {
-      reasons.push(`20日安値から+${(m.distanceFromLow20 * 100).toFixed(1)}%の位置`)
-    }
-    if (m.return20d < 0) reasons.push(`20日騰落は${formatReturn(m.return20d)}で調整局面`)
+  }
+  if (valuation.drawdownFrom52wHigh < -0.15) {
+    reasons.push(`52週高値から${formatReturn(valuation.drawdownFrom52wHigh)}`)
+  }
+  if (m.rsi14 <= 30) {
+    reasons.push(`RSI14は${m.rsi14.toFixed(0)}で売られすぎ圏`)
+  } else if (m.rsi14 <= REBOUND_RSI_CEILING) {
+    reasons.push(`RSI14は${m.rsi14.toFixed(0)}で下げ渋り`)
+  }
+  if (category === 'buy' && m.distanceFromLow20 > 0.02) {
+    reasons.push(`20日安値から+${(m.distanceFromLow20 * 100).toFixed(1)}%まで戻している`)
+  }
+  if (category === 'buy' && m.sma5 > m.sma20) {
+    reasons.push('5日線が20日線を上回り、短期は上向き')
   }
 
   return reasons
 }
 
-function buildCautions(category: CandidateCategory, m: CandidateMetrics): string[] {
+function buildCautions(
+  category: CandidateCategory,
+  m: CandidateMetrics,
+  valuation: ValuationSnapshot | null,
+): string[] {
   const cautions: string[] = []
 
-  if (category === 'danger') {
-    cautions.push(`5日で${formatReturn(m.return5d)}の下落`)
-    if (m.distanceFromLow20 <= 0.01) cautions.push('20日安値を更新中')
-    if (m.volatility20 > 0.04) {
-      cautions.push(`日々の値動きが${(m.volatility20 * 100).toFixed(1)}%と荒い`)
-    }
-    cautions.push('決算・適時開示など悪材料の有無を確認')
-    return cautions
-  }
-
   if (category === 'skip') {
-    cautions.push('明確な短期エッジは乏しい')
+    if (valuation && valuation.rangePercentile > CHEAP_RANGE_PERCENTILE) {
+      cautions.push(
+        `過去2年で下位${(valuation.rangePercentile * 100).toFixed(0)}%の水準。安値圏ではない`,
+      )
+    } else {
+      cautions.push('割安と判断できる材料が乏しい')
+    }
     return cautions
   }
 
+  if (category === 'trap') {
+    if (valuation && valuation.drawdownFrom52wHigh <= EXTREME_DRAWDOWN) {
+      cautions.push(
+        `52週高値から${formatReturn(valuation.drawdownFrom52wHigh)}。半値以下まで売られている`,
+      )
+    }
+    cautions.push(`5日で${formatReturn(m.return5d)}、20日で${formatReturn(m.return20d)}の下落`)
+    if (m.distanceFromLow20 <= 0.01) cautions.push('20日安値を更新中')
+    cautions.push('安いのには理由がある可能性。決算と適時開示を必ず確認する')
+    return cautions
+  }
+
+  if (category === 'watch') {
+    if (m.distanceFromLow20 <= NEW_LOW_TOLERANCE) {
+      cautions.push('20日安値を更新中。下げ止まりを確認してから検討する')
+    } else if (m.return5d <= DANGER_DROP_5D) {
+      cautions.push(`直近5日で${formatReturn(m.return5d)}。まだ落ちている最中`)
+    } else {
+      cautions.push('下落が続くリスクが高い。下げ止まりを確認してから検討する')
+    }
+  }
+
+  if (m.distanceFromLow20 <= NEW_LOW_TOLERANCE) cautions.push('20日安値を更新中')
   if (m.volatility20 > 0.035) {
     cautions.push(`日々の値動きが${(m.volatility20 * 100).toFixed(1)}%と大きい`)
   }
-  if (m.rsi14 > 60) cautions.push(`RSI14は${m.rsi14.toFixed(0)}でまだ高め`)
-  cautions.push('損切り条件を先に決める')
+  cautions.push('買う前に損切り条件を決める')
 
   return cautions
 }
@@ -350,9 +301,9 @@ export function computeCandidate(source: CandidateSource): Omit<CandidateItem, '
   if (closes.length < 26) return null
 
   const m = buildMetrics(closes, today)
-  const reboundScore = computeReboundScore(m)
+  const valuation = computeValuation(closes)
   const downtrendRisk = computeDowntrendRisk(m)
-  const category = classify(m, downtrendRisk)
+  const category = classify(m, valuation, downtrendRisk)
 
   return {
     code: entry.code,
@@ -366,27 +317,33 @@ export function computeCandidate(source: CandidateSource): Omit<CandidateItem, '
     return20d: m.return20d,
     volume: today.volume,
     turnover: today.volume * m.close,
-    reboundScore,
+    rsi14: m.rsi14,
+    distanceFromLow20: m.distanceFromLow20,
     downtrendRisk,
     riskBand: toRiskBand(downtrendRisk),
+    valuation,
     lot: computeLotCost(m.close, SAMPLE_BUDGET_YEN),
     targets: computePriceTargets(m.close, m.volatility20),
-    historicalEdge: computeHistoricalEdge(closes, category),
-    reasons: buildReasons(category, m),
-    cautions: buildCautions(category, m),
+    reasons: buildReasons(category, m, valuation),
+    cautions: buildCautions(category, m, valuation),
   }
 }
 
 const CATEGORY_ORDER: Record<CandidateCategory, number> = {
-  dip: 0,
-  rebound: 1,
-  danger: 2,
+  buy: 0,
+  watch: 1,
+  trap: 2,
   skip: 3,
 }
 
+/** 割安なほど大きい値。同カテゴリ内の並び順に使う。 */
+export function cheapnessScore(item: Omit<CandidateItem, 'rank'>): number {
+  return item.valuation?.score ?? 0
+}
+
 /**
- * 候補配列を「押し目→反発→危険→見送り」の順、同カテゴリ内はスコア順に並べ、
- * rank を付与して返す。counts も併せて集計する。
+ * 候補配列を「買い候補→監視→割安だが要注意→見送り」の順、
+ * 同カテゴリ内は割安度スコア順に並べ、rank を付与する。
  */
 export function rankCandidates(
   items: Array<Omit<CandidateItem, 'rank'>>,
@@ -395,12 +352,10 @@ export function rankCandidates(
     if (CATEGORY_ORDER[a.category] !== CATEGORY_ORDER[b.category]) {
       return CATEGORY_ORDER[a.category] - CATEGORY_ORDER[b.category]
     }
-    // 危険は下落継続リスク降順、それ以外は反発期待スコア降順
-    if (a.category === 'danger') return b.downtrendRisk - a.downtrendRisk
-    return b.reboundScore - a.reboundScore
+    return cheapnessScore(b) - cheapnessScore(a)
   })
 
-  const counts: CandidateCounts = { dip: 0, rebound: 0, danger: 0, skip: 0 }
+  const counts: CandidateCounts = { buy: 0, watch: 0, trap: 0, skip: 0 }
   const candidates = sorted.map((item, index) => {
     counts[item.category] += 1
     return { ...item, rank: index + 1 }

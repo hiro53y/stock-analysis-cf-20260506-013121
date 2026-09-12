@@ -20,7 +20,8 @@ export function GuideTab() {
         </div>
         <div className="guide-list">
           <GuideRow term={<span className="guide-chip">候補抽出</span>}>
-            <b>日本株全体の「本日値下がりした銘柄」</b>を自動で集め、「押し目・反発・危険」に分けて一覧表示します。安く買える候補を探すためのタブです。
+            日本株全体から本日値下がりした銘柄を集め、<b>その銘柄自身の過去と比べて割安かどうか</b>で
+            「買い候補・監視・割安だが要注意」に仕分けます。<b>割安になった株を探すためのタブ</b>です。
           </GuideRow>
           <GuideRow term={<span className="guide-chip">個別株調査</span>}>
             気になる1銘柄を入力して、株価・騰落率・分析結果をくわしく調べます。ここで「登録銘柄に追加」すると、候補抽出の「登録銘柄」でも絞り込めます。
@@ -38,25 +39,40 @@ export function GuideTab() {
         </div>
         <div className="guide-list">
           <GuideRow term={<span className="guide-chip">本日の候補</span>}>
-            日本株全体から本日値下がりした銘柄を集めた一覧です。相場によって毎日入れ替わります。上部のチップで「押し目・反発・危険・登録銘柄」に絞り込めます。各行をタップすると詳細が開きます。
+            日本株全体から本日値下がりした銘柄を集め、<b>安値圏にあるものだけ</b>を残した一覧です。
+            上部のチップで絞り込め、各行をタップすると判断材料が開きます。
+            安値圏まで下げた銘柄がない日は候補が少なくなります。
           </GuideRow>
           <GuideRow term={<span className="guide-chip">登録銘柄</span>}>
             <b>あなた自身が登録した銘柄</b>のこと。候補抽出タブ上部の検索や各カードの「登録」で追加、「登録解除」で削除できます。「登録銘柄」チップで自分の銘柄だけを表示できます。
           </GuideRow>
-          <GuideRow term={<span className="candidate-tag tag-dip">押し目候補</span>}>
-            上昇の流れは続いているのに、一時的に少し下がった銘柄。<b>上げ相場の一時的な下げ＝買い場になりやすい</b>という考え方です。
+          <GuideRow term={<span className="candidate-tag tag-buy">買い候補</span>}>
+            <b>その銘柄自身の過去2年と比べて安値圏</b>まで下げ、しかも<b>下げ止まりの兆し</b>がある状態。
+            いま検討する価値がある、という位置づけです。
           </GuideRow>
-          <GuideRow term={<span className="candidate-tag tag-rebound">反発候補</span>}>
-            下がっていた銘柄が、そろそろ<b>反発（下げ止まって上向きに転じる）しそう</b>な兆しを見せている状態です。
+          <GuideRow term={<span className="candidate-tag tag-watch">監視</span>}>
+            安値圏ではあるものの、<b>まだ下げている最中</b>。
+            下げ止まりを確認してから検討するための枠です。
           </GuideRow>
-          <GuideRow term={<span className="candidate-tag tag-danger">危険な下落</span>}>
-            短期間で大きく下げ、安値を更新しているなど<b>下落が続くリスクが高い</b>状態。安易な買いは避けたい銘柄です。
+          <GuideRow term={<span className="candidate-tag tag-trap">割安だが要注意</span>}>
+            安値圏だが<b>下落が続くリスクが高い</b>状態。安いのには理由がある可能性（バリュートラップ）があります。
+            決算や適時開示を必ず確認してください。
           </GuideRow>
           <GuideRow term={<span className="candidate-tag tag-skip">見送り</span>}>
-            明確な買い場のサインが乏しく<b>様子見が無難</b>な状態。候補一覧には原則表示しません（登録した銘柄がこの状態のときだけ表示されます）。
+            <b>安値圏ではない</b>銘柄。今日たまたま下がっただけで、その銘柄にとって安い水準ではありません。
+            候補一覧には原則表示しません（登録した銘柄だけ表示されます）。
           </GuideRow>
-          <GuideRow term={<span className="guide-metric val-positive">反発期待<br />64.4</span>}>
-            反発しそうな度合いを0〜100で表した目安。数字が大きいほど反発を期待しやすい、という指標です。
+          <GuideRow term={<span className="guide-metric">安値圏 12%</span>}>
+            <b>この画面でいちばん重要な数字</b>です。現在の株価が、その銘柄の過去2年の値動きのなかで
+            <b>下から何%の位置にあるか</b>を表します。12%なら「過去2年のうち、これより安かった日は12%しかない」という意味です。
+            30%以下を安値圏として扱います。業種平均やPERの絶対水準ではなく、<b>その銘柄自身との比較</b>である点に注意してください。
+          </GuideRow>
+          <GuideRow term={<span className="guide-metric">200日線からの乖離<br />-14.2%</span>}>
+            長期の平均株価（200日移動平均）からどれだけ離れているか。「過去2年で下位6%の深さ」という補足が付きます。
+            同じ-14%でも、普段から荒い銘柄なら珍しくなく、普段おとなしい銘柄なら異常な深さ、という違いを見るためです。
+          </GuideRow>
+          <GuideRow term={<span className="guide-metric">52週高値から<br />-23.5%</span>}>
+            この1年の高値からどれだけ下げたか。高値掴みを避けるための定番の見方です。
           </GuideRow>
           <GuideRow
             term={
@@ -71,25 +87,55 @@ export function GuideTab() {
             <span className="risk-band band-low">低</span>
             <span className="risk-band band-mid">中</span>
             <span className="risk-band band-high">高</span>
-            ）。高いほど下げが続くリスクが大きい、という意味です。
+            ）。高いと「割安だが要注意」に分類されます。
           </GuideRow>
-          <GuideRow term={<span className="guide-metric">1単元（100株）<br />17.2万円</span>}>
-            日本株は原則100株単位でしか買えません。その1単元を買うのに必要な金額です（手数料は含みません）。
+          <GuideRow term={<span className="guide-metric">最低購入代金<br />29.9万円</span>}>
+            日本株は原則100株単位でしか買えません。1単元を買うのに必要な金額です（手数料は含みません）。
+            単元が100株でない銘柄もあり、その場合は実際の単元で計算します。
           </GuideRow>
-          <GuideRow term={<span className="guide-metric">目標（5営業日）<br />3,313円</span>}>
-            その銘柄自身の値動きの荒さ（直近20日のボラティリティ）から見た、5営業日での上値の目安です。
-            値動きの小さい大型株と荒い小型株で同じ目標を置いても意味がないため、銘柄ごとに計算しています。
-          </GuideRow>
-          <GuideRow term={<span className="guide-metric">損切り目安<br />2,980円</span>}>
-            同じ考え方で求めた下値の目安です。買う前にここを割ったら撤退する、と決めておくために使います。
+          <GuideRow term={<span className="guide-metric">目標（約1か月）<br />2,980円</span>}>
+            その銘柄自身の値動きの荒さ（直近20日のボラティリティ）から見た、<b>約1か月（20営業日）</b>での上値の目安です。
+            値動きの小さい大型株と荒い小型株に同じ目標を置いても意味がないため、銘柄ごとに計算しています。
+            損切り目安も同じ考え方で出しています。
           </GuideRow>
           <GuideRow term={<span className="guide-metric">売買代金 / 出来高</span>}>
             その日にどれだけ売買されたかの目安。少なすぎる銘柄は買値・売値が不利になりやすいため、
             候補からは自動的に除外しています。
           </GuideRow>
-          <GuideRow term={<span className="guide-chip">過去の同条件の実績</span>}>
-            <b>同じ銘柄の過去データ</b>で同じ条件が出た日を探し、その5営業日後に上がっていた割合と平均の値動きを表示します。
-            標本が少ないときは「集計できていません」と出ます。過去にそうだったというだけで、今回を保証するものではありません。
+          <GuideRow term={<span className="guide-chip">PER / PBR / 配当利回り</span>}>
+            カードを開いたときに、その銘柄だけ追加で取得する参考指標です。安値圏という判断の裏づけとして見ます。
+            取得できなかった項目は表示しません（推測では埋めません）。
+          </GuideRow>
+          <GuideRow term={<span className="guide-chip">直近決算 / 収益性・安定性・成長性</span>}>
+            <b>「なぜ下がったか」を判断する材料</b>です。安くなった理由が業績の悪化なら、
+            安値圏でも買うべきではないかもしれません。決算の要約と、収益性・安定性・成長性それぞれの評価を表示します。
+          </GuideRow>
+          <GuideRow term={<span className="guide-chip">証券アナリストの見方</span>}>
+            プロの証券アナリストのコンセンサス（判断・平均目標株価・人数の内訳）を、みんかぶから取得して表示します。
+            <b>この目標株価は「1年後」の予想</b>で、アプリ自身の「目標（約1か月）」とは時間軸が違います。
+            目標株価の推移も出すので、直近で引き下げられているならそれ自体が材料になります。
+            <b>本アプリの分類やスコアには使っていません</b>（外部の見方は、あくまで参考として並べています）。
+          </GuideRow>
+          <GuideRow term={<span className="guide-chip">アナリスト予想と会社予想の差</span>}>
+            今期の1株利益について、アナリストの予想が会社の予想をどれだけ上回っている（下回っている）かです。
+            安くなった理由が業績なら、ここに差が出ます。
+          </GuideRow>
+          <GuideRow term={<span className="guide-chip">外部サイトで確認する</span>}>
+            その銘柄のページを Yahoo!ファイナンス・みんかぶ・株探・楽天証券・SBI証券・moomoo で開けます。
+            <b>証券会社のアナリストレポートはログインが必要なためアプリ側では取得できません</b>が、
+            ブラウザでログイン済みならリンクから直接読めます。
+          </GuideRow>
+          <GuideRow term={<span className="guide-chip">並び順</span>}>
+            一覧の並びを「割安な順 / 必要資金が少ない順 / 本日の下落が大きい順 / 売買代金が多い順」で切り替えられます。
+            カテゴリをまたいで並ぶので、買い候補と監視を横断して比べられます。
+          </GuideRow>
+          <GuideRow term={<span className="guide-chip">過去に同じ条件が出たとき</span>}>
+            <b>同じ銘柄の過去2年</b>で安値圏まで下げた日を探し、その20営業日後どうなったかを集計します。
+            <b>必ず「条件なしの同期間平均」も併記します。</b>
+            相場全体が good だった時期なら何もしなくても上がっているため、
+            その差（実質の上乗せ）を見ないと判断を誤ります。
+            保有中にどれだけ含み損に耐える必要があったか（最大下落）も表示します。
+            標本が少ないときは表示しません。過去の傾向であって、将来を保証するものではありません。
           </GuideRow>
           <GuideRow
             term={
@@ -140,7 +186,7 @@ export function GuideTab() {
             4種類の予測モデルそれぞれの期待リターン・上昇確率・精度を並べた表です。
           </GuideRow>
           <GuideRow term={<span className="guide-chip">売買の目安</span>}>
-            1単元（100株）の必要資金・目標株価・損切り目安・目標到達時の税引後利益を表示します（税率20.315%で概算）。
+            1単元（100株）の必要資金・目標株価（約1か月）・損切り目安・目標到達時の税引後利益を表示します（税率20.315%で概算）。
           </GuideRow>
           <GuideRow
             term={

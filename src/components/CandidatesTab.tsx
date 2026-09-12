@@ -4,12 +4,13 @@ import type {
   CandidateCategory,
   CandidateItem,
   CandidatesResponse,
+  StockDetail,
   SymbolSearchHit,
   WatchlistEntry,
 } from '../../shared/types'
 import { canonicalCode, formatReturn } from '../../shared/utils'
-import { fetchCandidates } from '../lib/api'
-import { CandidateCard } from './CandidateCard'
+import { fetchCandidates, fetchStockDetail } from '../lib/api'
+import { CandidateCard, type DetailState } from './CandidateCard'
 import { SymbolSearch } from './SymbolSearch'
 
 interface CandidatesTabProps {
@@ -20,8 +21,17 @@ interface CandidatesTabProps {
 }
 
 type FilterKey = 'all' | CandidateCategory | 'registered'
+type SortKey = 'cheap' | 'affordable' | 'decline' | 'turnover'
 
-const FILTER_ORDER: FilterKey[] = ['all', 'dip', 'rebound', 'danger', 'registered']
+const FILTER_ORDER: FilterKey[] = ['all', 'buy', 'watch', 'trap', 'skip', 'registered']
+
+/** 並び順の選択肢。カテゴリをまたいで並べ替えられるようにする。 */
+const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: 'cheap', label: '割安な順' },
+  { key: 'affordable', label: '必要資金が少ない順' },
+  { key: 'decline', label: '本日の下落が大きい順' },
+  { key: 'turnover', label: '売買代金が多い順' },
+]
 
 function filterLabel(key: FilterKey): string {
   if (key === 'all') return 'すべて'
@@ -41,11 +51,36 @@ function formatTimestamp(iso: string): string {
   })
 }
 
+function sortCandidates(items: CandidateItem[], sort: SortKey): CandidateItem[] {
+  const sorted = [...items]
+  if (sort === 'affordable') {
+    sorted.sort((a, b) => a.lot.costPerLot - b.lot.costPerLot)
+  } else if (sort === 'decline') {
+    sorted.sort((a, b) => a.return1d - b.return1d)
+  } else if (sort === 'turnover') {
+    sorted.sort((a, b) => b.turnover - a.turnover)
+  } else {
+    // 既定は割安な順。同点はサーバーが付けた rank（カテゴリ順）で安定させる
+    sorted.sort((a, b) => {
+      const diff = (b.valuation?.score ?? 0) - (a.valuation?.score ?? 0)
+      return diff !== 0 ? diff : a.rank - b.rank
+    })
+  }
+  return sorted
+}
+
 export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }: CandidatesTabProps) {
   const [data, setData] = useState<CandidatesResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<FilterKey>('all')
+  const [sort, setSort] = useState<SortKey>('cheap')
+
+  // 銘柄詳細はカードではなくここで保持する。
+  // カード内に持つと、絞り込みを切り替えてアンマウントされるたびに取得し直してしまう。
+  const [details, setDetails] = useState<Record<string, StockDetail>>({})
+  const [detailStates, setDetailStates] = useState<Record<string, DetailState>>({})
+  const detailControllers = useRef(new Map<string, AbortController>())
 
   // 登録銘柄のコード集合（正準化・ソート結合）— 変化したときだけ再取得する
   const codesKey = useMemo(
@@ -84,6 +119,39 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
     void loadCandidates()
   }, [loadCandidates])
 
+  // 画面を離れるときに未完了の詳細取得を中断する
+  useEffect(() => {
+    const controllers = detailControllers.current
+    return () => {
+      for (const controller of controllers.values()) controller.abort()
+      controllers.clear()
+    }
+  }, [])
+
+  /** カードが開かれたときだけ、その銘柄の詳細を1回取得する */
+  const loadDetail = useCallback(
+    async (code: string) => {
+      if (details[code] || detailStates[code] === 'loading') return
+
+      detailControllers.current.get(code)?.abort()
+      const controller = new AbortController()
+      detailControllers.current.set(code, controller)
+
+      setDetailStates((current) => ({ ...current, [code]: 'loading' }))
+      try {
+        const detail = await fetchStockDetail(code, controller.signal)
+        setDetails((current) => ({ ...current, [code]: detail }))
+        setDetailStates((current) => ({ ...current, [code]: 'idle' }))
+      } catch (detailError) {
+        if (detailError instanceof DOMException && detailError.name === 'AbortError') return
+        setDetailStates((current) => ({ ...current, [code]: 'error' }))
+      } finally {
+        detailControllers.current.delete(code)
+      }
+    },
+    [details, detailStates],
+  )
+
   // 登録銘柄の社名でサーバー結果を上書き、登録判定用の集合も作る
   const registrySet = useMemo(
     () => new Set(registry.map((entry) => canonicalCode(entry.code))),
@@ -108,19 +176,22 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
     [registrySet],
   )
 
-  const counts = data?.counts ?? { dip: 0, rebound: 0, danger: 0, skip: 0 }
+  const counts = data?.counts ?? { buy: 0, watch: 0, trap: 0, skip: 0 }
   const summary = data?.summary
   const registeredCandidates = useMemo(
     () => candidates.filter((item) => isRegistered(item.code)),
     [candidates, isRegistered],
   )
 
-  const filtered =
-    filter === 'all'
-      ? candidates
-      : filter === 'registered'
-        ? registeredCandidates
-        : candidates.filter((item) => item.category === filter)
+  const filtered = useMemo(() => {
+    const base =
+      filter === 'all'
+        ? candidates
+        : filter === 'registered'
+          ? registeredCandidates
+          : candidates.filter((item) => item.category === filter)
+    return sortCandidates(base, sort)
+  }, [candidates, registeredCandidates, filter, sort])
 
   const countFor = (key: FilterKey): number => {
     if (key === 'all') return candidates.length
@@ -182,7 +253,7 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
       <section className="panel register-search">
         <p className="register-search-title">銘柄を検索して登録</p>
         <p className="register-search-hint">
-          会社名で検索して「登録銘柄」に追加できます。登録した銘柄は候補に入らなくても必ず分析されます。
+          会社名で検索して「登録銘柄」に追加できます。登録した銘柄は割安でなくても必ず分析されます。
         </p>
         <SymbolSearch
           label="会社名または銘柄コードで検索"
@@ -191,20 +262,37 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
         />
       </section>
 
-      <nav className="chip-bar" aria-label="候補の絞り込み">
-        {FILTER_ORDER.map((key) => (
-          <button
-            key={key}
-            type="button"
-            aria-pressed={key === filter}
-            className={`chip chip-${key}${key === filter ? ' active' : ''}`}
-            onClick={() => setFilter(key)}
+      <div className="list-controls">
+        <nav className="chip-bar" aria-label="候補の絞り込み">
+          {FILTER_ORDER.map((key) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={key === filter}
+              className={`chip chip-${key}${key === filter ? ' active' : ''}`}
+              onClick={() => setFilter(key)}
+            >
+              {filterLabel(key)}
+              <span className="chip-count">{countFor(key)}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="sort-bar">
+          <label htmlFor="candidate-sort">並び順</label>
+          <select
+            id="candidate-sort"
+            value={sort}
+            onChange={(event) => setSort(event.target.value as SortKey)}
           >
-            {filterLabel(key)}
-            <span className="chip-count">{countFor(key)}</span>
-          </button>
-        ))}
-      </nav>
+            {SORT_OPTIONS.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
 
       {error ? (
         <section className="panel error-panel" role="alert">
@@ -236,7 +324,11 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
         <section className="panel empty-panel">
           <p className="eyebrow">{filterLabel(filter)}</p>
           <h3>該当する銘柄はありません</h3>
-          <p>別の絞り込みを選ぶか、更新して最新の状態を確認してください。</p>
+          <p>
+            相場が堅調な日は、安値圏まで下げた銘柄が出ないことがあります。
+            「すべて」に切り替えるか、時間をおいて更新してください。
+            登録した銘柄は割安でなくても必ず表示されます。
+          </p>
         </section>
       ) : null}
 
@@ -247,6 +339,9 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
               key={item.code}
               item={item}
               isRegistered={isRegistered(item.code)}
+              detail={details[item.code] ?? null}
+              detailState={detailStates[item.code] ?? 'idle'}
+              onOpen={(code) => void loadDetail(code)}
               onAnalyze={onAnalyze}
               onRegister={handleRegisterCandidate}
               onUnregister={onUnregister}
