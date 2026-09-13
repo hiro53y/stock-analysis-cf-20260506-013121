@@ -1,6 +1,6 @@
 // キャッシュ名を上げないと、利用者の端末に旧ビルドの app shell が残り続ける。
 // UI やロジックを変更したら必ずこの値を上げること（shared/constants.ts の CACHE_VERSION と対）。
-const CACHE_NAME = 'stock-analysis-shell-v7'
+const CACHE_NAME = 'stock-analysis-shell-v8'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/icons/icon-192.svg', '/icons/icon-512.svg']
 const ASSET_LINK_PATTERN = /(?:src|href)=["']([^"']+)["']/g
 

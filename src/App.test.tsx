@@ -180,6 +180,52 @@ describe('App', () => {
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
   })
 
+  it('前回の結果を復元して表示しているときは「未実行」と出さない', () => {
+    // 以前は結果が表示されているのに「未実行 / まだ実行していません」と出ていた
+    apiMocks.loadLastResult.mockReturnValue(createResult())
+
+    render(<App />)
+    gotoResearch()
+
+    expect(screen.queryByText('未実行')).not.toBeInTheDocument()
+    expect(screen.queryByText('まだ実行していません')).not.toBeInTheDocument()
+    expect(screen.getByText('前回の分析結果を表示しています')).toBeInTheDocument()
+  })
+
+  it('分析完了の時刻は日本時間で表示する', () => {
+    // generatedAt は UTC。12:00Z は日本時間の 21:00
+    apiMocks.loadLastResult.mockReturnValue(createResult({ generatedAt: '2026-04-16T12:00:00.000Z' }))
+
+    render(<App />)
+    gotoResearch()
+
+    expect(screen.getByText(/分析完了 2026\/04\/16 21:00/)).toBeInTheDocument()
+  })
+
+  it('米国株の結果には登録ボタンを出さない（候補一覧は日本株専用）', () => {
+    apiMocks.loadLastResult.mockReturnValue(
+      createResult({ normalizedSymbol: 'AAPL', symbol: 'AAPL', market: 'US', companyName: 'Apple' }),
+    )
+
+    render(<App />)
+    gotoResearch()
+
+    expect(screen.queryByRole('button', { name: '登録銘柄に追加' })).not.toBeInTheDocument()
+    expect(screen.getByText(/日本株（4桁コード）のみ対応/)).toBeInTheDocument()
+  })
+
+  it('個別株調査から戻っても候補一覧を取り直さない', async () => {
+    render(<App />)
+    await waitFor(() => expect(apiMocks.fetchCandidates).toHaveBeenCalledTimes(1))
+
+    gotoResearch()
+    fireEvent.click(screen.getByRole('tab', { name: '候補抽出' }))
+
+    // 少し待っても追加の取得が走っていないこと
+    await new Promise((resolve) => window.setTimeout(resolve, 50))
+    expect(apiMocks.fetchCandidates).toHaveBeenCalledTimes(1)
+  })
+
   it('実行状況のバッジは日本語ラベルで表示する', async () => {
     const user = userEvent.setup()
     apiMocks.fetchAnalysisStatus.mockResolvedValue({

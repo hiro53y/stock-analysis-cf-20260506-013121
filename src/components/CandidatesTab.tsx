@@ -8,7 +8,7 @@ import type {
   SymbolSearchHit,
   WatchlistEntry,
 } from '../../shared/types'
-import { canonicalCode, formatReturn } from '../../shared/utils'
+import { canonicalCode, formatReturn, isJapaneseStockCode } from '../../shared/utils'
 import { fetchCandidates, fetchStockDetail } from '../lib/api'
 import { CandidateCard, type DetailState } from './CandidateCard'
 import { SymbolSearch } from './SymbolSearch'
@@ -33,6 +33,12 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: 'turnover', label: '売買代金が多い順' },
 ]
 
+/** 登録を続けて行ったときに、再取得を1回にまとめるための待ち時間 */
+const REGISTRY_REFETCH_DELAY_MS = 600
+
+/** 候補一覧は日本株専用なので、検索でも日本株だけを出す（参照を固定するためモジュール直下に置く） */
+const acceptJapaneseStock = (hit: SymbolSearchHit) => isJapaneseStockCode(hit.symbol)
+
 function filterLabel(key: FilterKey): string {
   if (key === 'all') return 'すべて'
   if (key === 'registered') return '登録銘柄'
@@ -44,6 +50,7 @@ function formatTimestamp(iso: string): string {
   const parsed = new Date(iso)
   if (Number.isNaN(parsed.getTime())) return '—'
   return parsed.toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo',
     month: 'numeric',
     day: 'numeric',
     hour: '2-digit',
@@ -82,21 +89,29 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
   const [detailStates, setDetailStates] = useState<Record<string, DetailState>>({})
   const detailControllers = useRef(new Map<string, AbortController>())
 
-  // 登録銘柄のコード集合（正準化・ソート結合）— 変化したときだけ再取得する
-  const codesKey = useMemo(
+  // 登録銘柄のうち候補一覧で扱える日本株のコード（正準化・重複除去・ソート済み）
+  const registryCodes = useMemo(
     () =>
-      Array.from(new Set(registry.map((entry) => canonicalCode(entry.code))))
-        .sort()
-        .join(','),
+      Array.from(
+        new Set(registry.map((entry) => canonicalCode(entry.code)).filter(isJapaneseStockCode)),
+      ).sort(),
+    [registry],
+  )
+  const registryKey = registryCodes.join(',')
+
+  // 候補一覧では扱えない登録銘柄（米国株など、以前のバージョンで登録されたもの）
+  const unsupportedRegistry = useMemo(
+    () => registry.filter((entry) => !isJapaneseStockCode(entry.code)),
     [registry],
   )
 
   // 最新のリクエストだけを反映するためのカウンタ（古い応答の追い越しを無視）
   const requestIdRef = useRef(0)
+  // 直近に成功した取得で、どの登録銘柄を含めて問い合わせたか
+  const requestedCodesRef = useRef<Set<string> | null>(null)
 
   const loadCandidates = useCallback(async () => {
-    // 登録銘柄を渡す（空でも可）。サーバーは市場全体の本日値下がり銘柄とユニオンして返す。
-    const codes = codesKey ? codesKey.split(',') : []
+    const codes = registryKey ? registryKey.split(',') : []
     const requestId = requestIdRef.current + 1
     requestIdRef.current = requestId
     setLoading(true)
@@ -104,6 +119,7 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
     try {
       const response = await fetchCandidates(codes)
       if (requestIdRef.current !== requestId) return // 後発のリクエストが走っているので破棄
+      requestedCodesRef.current = new Set(codes)
       setData(response)
     } catch (loadError) {
       if (requestIdRef.current !== requestId) return
@@ -111,13 +127,34 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
     } finally {
       if (requestIdRef.current === requestId) setLoading(false)
     }
-  }, [codesKey])
+  }, [registryKey])
 
+  const dataCodes = useMemo(
+    () => new Set((data?.candidates ?? []).map((item) => item.code)),
+    [data],
+  )
+
+  /**
+   * 登録銘柄が変わったときの再取得。
+   *
+   * 以前は登録・解除のたびに毎回取得し直しており、続けて登録すると
+   * サーバーのレート制限（1分8回）に達して一覧がエラーになっていた。
+   * - 解除だけなら取得しない（画面側で表示を切り替えれば足りる）
+   * - すでに一覧に出ている銘柄を登録した場合も取得しない
+   * - 続けて登録したときは、待ち時間の間にまとめて1回だけ取得する
+   */
   useEffect(() => {
-    // 登録銘柄が変わるたびに候補を取得（データ取得のための正当な副作用）
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadCandidates()
-  }, [loadCandidates])
+    const requested = requestedCodesRef.current
+    if (requested !== null) {
+      const hasNewCode = registryCodes.some((code) => !requested.has(code) && !dataCodes.has(code))
+      if (!hasNewCode) return
+    }
+    const timer = window.setTimeout(
+      () => void loadCandidates(),
+      requested === null ? 0 : REGISTRY_REFETCH_DELAY_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [registryCodes, dataCodes, loadCandidates])
 
   // 画面を離れるときに未完了の詳細取得を中断する
   useEffect(() => {
@@ -152,36 +189,50 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
     [details, detailStates],
   )
 
-  // 登録銘柄の社名でサーバー結果を上書き、登録判定用の集合も作る
-  const registrySet = useMemo(
-    () => new Set(registry.map((entry) => canonicalCode(entry.code))),
-    [registry],
-  )
+  const registrySet = useMemo(() => new Set(registryCodes), [registryCodes])
   const registryByCode = useMemo(
     () => new Map(registry.map((entry) => [canonicalCode(entry.code), entry])),
     [registry],
   )
+
+  const isRegistered = useCallback((code: string) => registrySet.has(canonicalCode(code)), [registrySet])
+
   const candidates: CandidateItem[] = useMemo(() => {
     if (!data) return []
-    return data.candidates.map((item) => {
-      const entry = registryByCode.get(canonicalCode(item.code))
-      if (!entry) return item
-      const name = entry.name && entry.name !== entry.code ? entry.name : item.name
-      return { ...item, name }
-    })
-  }, [data, registryByCode])
+    return (
+      data.candidates
+        // 「見送り」は登録銘柄だからこそ一覧にあるもの。解除されたら画面からも外す
+        .filter((item) => item.category !== 'skip' || registrySet.has(item.code))
+        .map((item) => {
+          const entry = registryByCode.get(canonicalCode(item.code))
+          if (!entry) return item
+          const name = entry.name && entry.name !== entry.code ? entry.name : item.name
+          return { ...item, name }
+        })
+    )
+  }, [data, registrySet, registryByCode])
 
-  const isRegistered = useCallback(
-    (code: string) => registrySet.has(canonicalCode(code)),
-    [registrySet],
-  )
-
-  const counts = data?.counts ?? { buy: 0, watch: 0, trap: 0, skip: 0 }
+  const counts = useMemo(() => {
+    const next = { buy: 0, watch: 0, trap: 0, skip: 0 }
+    for (const item of candidates) next[item.category] += 1
+    return next
+  }, [candidates])
   const summary = data?.summary
+
   const registeredCandidates = useMemo(
     () => candidates.filter((item) => isRegistered(item.code)),
     [candidates, isRegistered],
   )
+
+  // 登録しているのに一覧にまだ出ていない銘柄。取得待ちか、取得できなかったもの
+  const pendingRegistered = useMemo(
+    () =>
+      registryCodes
+        .filter((code) => !dataCodes.has(code))
+        .map((code) => ({ code, name: registryByCode.get(code)?.name ?? code })),
+    [registryCodes, dataCodes, registryByCode],
+  )
+  const failedCodes = new Set(data?.missingRegistered ?? [])
 
   const filtered = useMemo(() => {
     const base =
@@ -195,7 +246,8 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
 
   const countFor = (key: FilterKey): number => {
     if (key === 'all') return candidates.length
-    if (key === 'registered') return registeredCandidates.length
+    // 登録銘柄は「一覧に出た数」ではなく「登録している数」を出す
+    if (key === 'registered') return registry.length
     return counts[key]
   }
 
@@ -206,6 +258,9 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
   const handleRegisterCandidate = (item: CandidateItem) => {
     onRegister({ code: canonicalCode(item.code), name: item.name, sector: '—' })
   }
+
+  const showRegisteredNotes =
+    filter === 'registered' && (pendingRegistered.length > 0 || unsupportedRegistry.length > 0)
 
   return (
     <div className="candidates-tab">
@@ -253,11 +308,12 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
       <section className="panel register-search">
         <p className="register-search-title">銘柄を検索して登録</p>
         <p className="register-search-hint">
-          会社名で検索して「登録銘柄」に追加できます。登録した銘柄は割安でなくても必ず分析されます。
+          会社名か銘柄コードで検索して「登録銘柄」に追加できます。登録した銘柄は、割安でなくても・今日動いていなくても必ず表示されます（日本株のみ）。
         </p>
         <SymbolSearch
           label="会社名または銘柄コードで検索"
-          placeholder="例: 任天堂 / トヨタ / Apple"
+          placeholder="例: 任天堂 / トヨタ / 5451"
+          accept={acceptJapaneseStock}
           onSelect={handleRegisterHit}
         />
       </section>
@@ -312,7 +368,7 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
         </section>
       ) : null}
 
-      {!error && data && filter === 'registered' && registeredCandidates.length === 0 ? (
+      {!error && data && filter === 'registered' && registry.length === 0 ? (
         <section className="panel empty-panel">
           <p className="eyebrow">登録銘柄</p>
           <h3>登録銘柄がありません</h3>
@@ -327,7 +383,7 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
           <p>
             相場が堅調な日は、安値圏まで下げた銘柄が出ないことがあります。
             「すべて」に切り替えるか、時間をおいて更新してください。
-            登録した銘柄は割安でなくても必ず表示されます。
+            登録した銘柄は割安でなくても「登録銘柄」に必ず表示されます。
           </p>
         </section>
       ) : null}
@@ -348,6 +404,58 @@ export function CandidatesTab({ registry, onAnalyze, onRegister, onUnregister }:
             />
           ))}
         </div>
+      ) : null}
+
+      {showRegisteredNotes ? (
+        <section className="panel registered-notes" aria-live="polite">
+          {pendingRegistered.length > 0 ? (
+            <ul className="registered-pending">
+              {pendingRegistered.map(({ code, name }) => (
+                <li key={code}>
+                  <span>
+                    <b>{name}</b> {code.replace(/\.T$/, '')}
+                  </span>
+                  <span className="sheet-note muted">
+                    {failedCodes.has(code) && !loading
+                      ? '株価を取得できませんでした（コードの誤りや上場廃止の可能性）'
+                      : '取得しています…'}
+                  </span>
+                  {failedCodes.has(code) && !loading ? (
+                    <button
+                      type="button"
+                      className="secondary-button compact"
+                      onClick={() => onUnregister(code)}
+                    >
+                      解除
+                    </button>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {unsupportedRegistry.length > 0 ? (
+            <ul className="registered-pending">
+              {unsupportedRegistry.map((entry) => (
+                <li key={entry.code}>
+                  <span>
+                    <b>{entry.name}</b> {entry.code}
+                  </span>
+                  <span className="sheet-note muted">
+                    日本株以外は候補一覧に表示できません（個別株調査タブでは分析できます）
+                  </span>
+                  <button
+                    type="button"
+                    className="secondary-button compact"
+                    onClick={() => onUnregister(entry.code)}
+                  >
+                    解除
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
       ) : null}
 
       <p className="disclaimer candidate-disclaimer">{CANDIDATE_DISCLAIMER}</p>

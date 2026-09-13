@@ -46,11 +46,16 @@ export interface UseAnalysisResult {
 export function useAnalysis(): UseAnalysisResult {
   const [form, setForm] = useState<AnalysisRequestPayload>(buildInitialForm())
   const [analysisId, setAnalysisId] = useState<string | null>(null)
-  const [status, setStatus] = useState<ViewStatus>('idle')
-  const [progress, setProgress] = useState(0)
-  const [progressMessage, setProgressMessage] = useState('まだ実行していません')
+  // 前回の結果を端末から復元した場合は「完了」として始める。
+  // idle のまま始めると、結果が表示されているのに「未実行 / まだ実行していません」と出てしまう。
+  const [restored] = useState<AnalysisResult | null>(() => loadLastResult())
+  const [status, setStatus] = useState<ViewStatus>(restored ? 'completed' : 'idle')
+  const [progress, setProgress] = useState(restored ? 100 : 0)
+  const [progressMessage, setProgressMessage] = useState(
+    restored ? '前回の分析結果を表示しています' : 'まだ実行していません',
+  )
   const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<AnalysisResult | null>(() => loadLastResult())
+  const [result, setResult] = useState<AnalysisResult | null>(restored)
   const [preview, setPreview] = useState<MarketDataResponse | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 

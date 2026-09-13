@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { DEFAULT_ANALYSIS_INPUT, DEFAULT_JP_WATCHLIST } from '../../shared/constants'
 import type { WatchlistEntry } from '../../shared/types'
-import { canonicalCode } from '../../shared/utils'
+import { canonicalCode, formatDateTimeJst, isJapaneseStockCode } from '../../shared/utils'
 import type { UseAnalysisResult, ViewStatus } from '../hooks/useAnalysis'
 import { AnalysisForm } from './AnalysisForm'
 import { BacktestPanel } from './BacktestPanel'
@@ -126,10 +126,14 @@ export function ResearchTab({
             <div className="target-meta">
               <span>市場: {result.market}</span>
               {sector ? <span>業種: {sector}</span> : null}
-              <span>分析完了 {result.generatedAt.slice(0, 16).replace('T', ' ')}</span>
+              <span>分析完了 {formatDateTimeJst(result.generatedAt)}</span>
             </div>
             <div className="target-actions">
-              {isRegistered ? (
+              {!isJapaneseStockCode(result.normalizedSymbol) ? (
+                <p className="sheet-note muted">
+                  候補抽出の登録銘柄は日本株（4桁コード）のみ対応しています。
+                </p>
+              ) : isRegistered ? (
                 <button
                   type="button"
                   className="secondary-button"

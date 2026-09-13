@@ -82,7 +82,9 @@ export function CandidateCard({
           <span className="candidate-identity">
             <span className="candidate-name">{item.name}</span>
             <span className="candidate-meta">
-              {item.code.replace(/\.T$/, '')} · {item.segment}
+              {item.code.replace(/\.T$/, '')}
+              {/* ランキングに載っていない登録銘柄は市場区分が分からないので出さない */}
+              {item.segment !== 'その他' ? ` · ${item.segment}` : ''}
             </span>
           </span>
 
@@ -191,7 +193,10 @@ export function CandidateCard({
               <div className="candidate-metric">
                 <dt>売買代金 / 出来高</dt>
                 <dd>
-                  {formatYenScale(item.turnover)} / {formatShareCount(item.volume)}
+                  {/* 出来高はランキング表からしか取れない。載っていない登録銘柄は不明 */}
+                  {item.volume > 0
+                    ? `${formatYenScale(item.turnover)} / ${formatShareCount(item.volume)}`
+                    : '—'}
                 </dd>
               </div>
             </dl>

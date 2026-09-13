@@ -125,7 +125,15 @@ export function analyzeMarketData(input: {
 
   // 割安さと過去実績は候補一覧と同じ関数で計算する（一覧と個別分析で数字を食い違わせない）。
   // priceSeries は表示用に間引いているため、必ず元の全履歴から求める。
-  const fullCloses = input.marketData.rows.map((row) => row.close)
+  //
+  // 期間は候補一覧（spark の 2年分）と揃える。個別分析は予測モデル用に3年分を取得しているため、
+  // そのまま使うと同じ銘柄でも「安値圏 87%」（一覧）と「91%」（個別分析）のように食い違う。
+  const lastRow = input.marketData.rows[input.marketData.rows.length - 1]
+  const windowStart = lastRow ? new Date(lastRow.date) : new Date()
+  windowStart.setFullYear(windowStart.getFullYear() - 2)
+  const fullCloses = input.marketData.rows
+    .filter((row) => new Date(row.date) >= windowStart)
+    .map((row) => row.close)
 
   const outcomes = getModelOutcomes(dataset.featureNames, dataset.trainingRows, dataset.latestRow)
   const successful = outcomes.filter(

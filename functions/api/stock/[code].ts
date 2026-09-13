@@ -57,7 +57,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { request, env, params, waitUntil } = context
 
   try {
-    await enforceRateLimit(env, '/api/stock', getClientIp(request))
     const code = resolveCode(params.code)
 
     const cached = await getGenericStoreValue<CachedDetail>(env, 'stock-detail', code).catch(
@@ -66,6 +65,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     if (cached && isFresh(cached.storedAt, ANALYSIS_CACHE_TTL_SECONDS)) {
       return jsonResponse(cached.detail)
     }
+
+    // 外部サイトへ取りにいくときだけ制限する（キャッシュから返すときは制限しない）
+    await enforceRateLimit(env, '/api/stock', getClientIp(request))
 
     const budget = new SubrequestBudget()
 

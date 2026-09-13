@@ -6,10 +6,12 @@ interface SymbolSearchProps {
   disabled?: boolean
   label?: string
   placeholder?: string
+  /** 表示する候補を絞る（参照が変わると再検索するので、モジュール直下で定義したものを渡す） */
+  accept?: (hit: SymbolSearchHit) => boolean
   onSelect: (hit: SymbolSearchHit) => void
 }
 
-export function SymbolSearch({ disabled, label, placeholder, onSelect }: SymbolSearchProps) {
+export function SymbolSearch({ disabled, label, placeholder, accept, onSelect }: SymbolSearchProps) {
   const inputId = useId()
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SymbolSearchHit[]>([])
@@ -34,7 +36,7 @@ export function SymbolSearch({ disabled, label, placeholder, onSelect }: SymbolS
         setLoading(true)
         const response = await fetchSymbolSearch(trimmed, controller.signal)
         if (!active) return
-        setResults(response.results)
+        setResults(accept ? response.results.filter(accept) : response.results)
         setOpen(true)
       } catch (searchError) {
         if (searchError instanceof DOMException && searchError.name === 'AbortError') {
@@ -52,7 +54,7 @@ export function SymbolSearch({ disabled, label, placeholder, onSelect }: SymbolS
       controller.abort()
       window.clearTimeout(timer)
     }
-  }, [query])
+  }, [query, accept])
 
   const handleSelect = (hit: SymbolSearchHit) => {
     onSelect(hit)

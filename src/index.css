@@ -1530,6 +1530,32 @@ select {
   font-size: 0.88rem;
 }
 
+/* 登録したのに一覧にまだ出ていない銘柄（取得中・取得失敗・日本株以外） */
+.registered-notes {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+}
+
+.registered-pending {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.registered-pending li {
+  display: grid;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.registered-pending li:last-child {
+  border-bottom: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 0.01ms !important;

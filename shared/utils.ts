@@ -46,6 +46,30 @@ export function formatCompactNumber(value: number): string {
   return value.toLocaleString('ja-JP', { maximumFractionDigits: 0 })
 }
 
+/**
+ * ISO8601 の日時を日本時間の「2026/09/13 11:08」形式で表す。
+ *
+ * サーバーが返す日時は UTC。文字列を切り出して表示すると 9 時間ずれる
+ * （11:08 に分析したのに「02:08」と出ていた）。
+ */
+export function formatDateTimeJst(iso: string): string {
+  const parsed = new Date(iso)
+  if (!iso || Number.isNaN(parsed.getTime())) return '—'
+  return parsed.toLocaleString('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+/** 候補一覧は日本株専用。4桁コード（.T）かどうか */
+export function isJapaneseStockCode(code: string): boolean {
+  return /^\d{4}\.T$/.test(canonicalCode(code))
+}
+
 /** 大きな金額を「1.7億円」「530万円」のように読みやすい単位で表す。 */
 export function formatYenScale(value: number): string {
   if (!Number.isFinite(value)) return '—'

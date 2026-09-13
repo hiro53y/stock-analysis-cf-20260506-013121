@@ -17,7 +17,8 @@ const mainTabLabels: Record<MainTabKey, string> = {
 }
 
 const tabDescriptions: Record<MainTabKey, string> = {
-  candidates: '日本株全体から本日値下がりした銘柄を集め、押し目・反発・危険に仕分けして表示します。',
+  candidates:
+    '日本株全体から本日値下がりした銘柄を集め、その銘柄自身の過去と比べて割安かどうかで「買い候補・監視・割安だが要注意」に仕分けます。',
   research: '銘柄コードまたは会社名から、株価・騰落率・分析結果を個別に確認できます。',
   guide: '用語の意味と分析結果の見方をまとめています。',
 }
@@ -104,26 +105,39 @@ export default function App() {
 
       <p className="tab-description">{tabDescriptions[mainTab]}</p>
 
-      <div role="tabpanel" id={`main-panel-${mainTab}`} aria-labelledby={`main-tab-${mainTab}`}>
-        {mainTab === 'candidates' ? (
-          <CandidatesTab
-            registry={registry}
-            onAnalyze={handleAnalyzeCandidate}
-            onRegister={registerStock}
-            onUnregister={unregisterStock}
-          />
-        ) : mainTab === 'guide' ? (
-          <GuideTab />
-        ) : (
-          <ResearchTab
-            analysis={analysis}
-            registry={registry}
-            isOffline={isOffline}
-            onRegister={registerStock}
-            onUnregister={unregisterStock}
-          />
-        )}
+      {/*
+        候補抽出タブは切り替えても作り直さない。作り直すと、個別株調査から戻るたびに
+        一覧の再取得・絞り込みと並び順のリセット・開いたカードの詳細の取り直しが起きる。
+      */}
+      <div
+        role="tabpanel"
+        id="main-panel-candidates"
+        aria-labelledby="main-tab-candidates"
+        hidden={mainTab !== 'candidates'}
+      >
+        <CandidatesTab
+          registry={registry}
+          onAnalyze={handleAnalyzeCandidate}
+          onRegister={registerStock}
+          onUnregister={unregisterStock}
+        />
       </div>
+
+      {mainTab !== 'candidates' ? (
+        <div role="tabpanel" id={`main-panel-${mainTab}`} aria-labelledby={`main-tab-${mainTab}`}>
+          {mainTab === 'guide' ? (
+            <GuideTab />
+          ) : (
+            <ResearchTab
+              analysis={analysis}
+              registry={registry}
+              isOffline={isOffline}
+              onRegister={registerStock}
+              onUnregister={unregisterStock}
+            />
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

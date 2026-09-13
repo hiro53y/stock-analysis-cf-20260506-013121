@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { onRequestGet } from './candidates'
-import { buildShortlist } from './candidates'
+import { buildShortlist, resolveRegistered, todayFromHistory } from './candidates'
 import { parseRankingRows, type RankingRow } from './lib/jp-ranking'
 import {
   CHEAP_RANGE_PERCENTILE,
@@ -169,6 +169,76 @@ describe('GET /api/candidates', () => {
     expect(fetchCalls.length).toBe(firstCallCount)
   })
 
+  it('ランキングに載っていない登録銘柄も一覧に出る', async () => {
+    // ランキング表のテストデータは 1300〜1349。5451 は載っていない。
+    // 以前は一次選抜の中でしか登録銘柄を拾っておらず、この銘柄は一覧から消えていた
+    // （実際に、個別株調査で登録したヨドコウ 5451 が候補抽出の登録銘柄に出なかった）。
+    const context = createContext(
+      'https://example.com/api/candidates?symbols=5451',
+      '203.0.113.6',
+    )
+    const response = await onRequestGet(context as never)
+    expect(response.status).toBe(200)
+
+    const payload = (await response.json()) as {
+      candidates: Array<{ code: string; volume: number; segment: string }>
+      missingRegistered?: string[]
+      registeredCount: number
+    }
+    const registered = payload.candidates.find((item) => item.code === '5451.T')
+    expect(registered).toBeDefined()
+    // 出来高はランキング表からしか取れないので不明（0）
+    expect(registered?.volume).toBe(0)
+    expect(payload.registeredCount).toBe(1)
+    expect(payload.missingRegistered).toEqual([])
+  })
+
+  it('登録銘柄の履歴だけ取得できなくても一覧全体は返し、取れなかった銘柄を知らせる', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+        fetchCalls.push(url)
+        if (url.includes('finance.yahoo.co.jp/stocks/ranking')) {
+          return new Response(rankingPageHtml(), { status: 200 })
+        }
+        if (url.includes('/v8/finance/spark')) {
+          const symbols = decodeURIComponent(new URL(url).searchParams.get('symbols') ?? '').split(',')
+          // 登録銘柄だけの取得は失敗させる
+          if (symbols.length === 1 && symbols[0] === '9998.T') {
+            return new Response('boom', { status: 500 })
+          }
+          return new Response(sparkPayload(symbols), { status: 200 })
+        }
+        return new Response('{}', { status: 200 })
+      }),
+    )
+
+    const context = createContext(
+      'https://example.com/api/candidates?symbols=9998',
+      '203.0.113.7',
+    )
+    const response = await onRequestGet(context as never)
+    expect(response.status).toBe(200)
+    const payload = (await response.json()) as {
+      candidates: unknown[]
+      missingRegistered?: string[]
+    }
+    expect(payload.candidates.length).toBeGreaterThan(0)
+    expect(payload.missingRegistered).toEqual(['9998.T'])
+  })
+
+  it('キャッシュから返せる要求にはレート制限をかけない', async () => {
+    // 登録を続けて追加すると同じ一覧を何度も要求する。以前は9回目で 429 になっていた
+    const url = 'https://example.com/api/candidates?symbols=1302'
+    const statuses: number[] = []
+    for (let index = 0; index < 12; index += 1) {
+      const response = await onRequestGet(createContext(url, '203.0.113.8') as never)
+      statuses.push(response.status)
+    }
+    expect(statuses.every((status) => status === 200)).toBe(true)
+  })
+
   it('ランキング取得が全滅しても 502 ではなく空の結果を返す', async () => {
     vi.stubGlobal(
       'fetch',
@@ -222,7 +292,7 @@ describe('buildShortlist', () => {
       row('1000.T', 0.03, 1000, 1_000_000),
       row('1001.T', -0.03, 1000, 1_000_000),
     ]
-    const picked = buildShortlist(rows, new Set())
+    const picked = buildShortlist(rows)
     expect(picked.map((item) => item.code)).toEqual(['1001.T'])
   })
 
@@ -231,23 +301,39 @@ describe('buildShortlist', () => {
       row('1000.T', -0.05, 100, 100), // 売買代金 1万円
       row('1001.T', -0.01, 1000, 1_000_000),
     ]
-    const picked = buildShortlist(rows, new Set())
+    const picked = buildShortlist(rows)
     expect(picked.map((item) => item.code)).toEqual(['1001.T'])
-  })
-
-  it('登録銘柄は流動性や騰落にかかわらず必ず含める', () => {
-    const rows = [
-      row('1000.T', 0.05, 100, 100), // 上昇かつ低流動性
-      row('1001.T', -0.01, 1000, 1_000_000),
-    ]
-    const picked = buildShortlist(rows, new Set(['1000.T']))
-    expect(picked.map((item) => item.code).sort()).toEqual(['1000.T', '1001.T'])
   })
 
   it('分析件数は上限を超えない', () => {
     const rows = Array.from({ length: 300 }, (_, index) =>
       row(`${2000 + index}.T`, -0.01 - index / 10000, 1000, 1_000_000),
     )
-    expect(buildShortlist(rows, new Set()).length).toBeLessThanOrEqual(SHORTLIST_SIZE)
+    expect(buildShortlist(rows).length).toBeLessThanOrEqual(SHORTLIST_SIZE)
+  })
+})
+
+describe('resolveRegistered', () => {
+  it('日本株の4桁コードだけを正準化して受け付ける', () => {
+    const url = new URL('https://example.com/api/candidates?symbols=7203,5451.T,AAPL,7203,12345')
+    expect(resolveRegistered(url)).toEqual(['5451.T', '7203.T'])
+  })
+
+  it('指定がなければ空配列', () => {
+    expect(resolveRegistered(new URL('https://example.com/api/candidates'))).toEqual([])
+  })
+})
+
+describe('todayFromHistory', () => {
+  it('履歴の末尾2本から終値と騰落率を求め、出来高は不明（0）にする', () => {
+    const today = todayFromHistory([100, 102, 99])
+    expect(today?.close).toBe(99)
+    expect(today?.return1d).toBeCloseTo(99 / 102 - 1, 10)
+    expect(today?.volume).toBe(0)
+  })
+
+  it('履歴が1本以下なら null', () => {
+    expect(todayFromHistory([100])).toBeNull()
+    expect(todayFromHistory([])).toBeNull()
   })
 })

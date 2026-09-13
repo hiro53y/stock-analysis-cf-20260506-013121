@@ -11,7 +11,7 @@ import {
   SHORTLIST_SIZE,
 } from '../../shared/constants'
 import { cheapnessScore, computeCandidate, rankCandidates } from '../../shared/analysis/candidates'
-import type { CandidateEntry } from '../../shared/analysis/candidates'
+import type { CandidateEntry, CandidateToday } from '../../shared/analysis/candidates'
 import type {
   CandidateCategory,
   CandidateItem,
@@ -27,17 +27,23 @@ import { enforceRateLimit } from './lib/rate-limit'
 import { getGenericStoreValue, setGenericStoreValue } from './lib/store'
 import { SubrequestBudget } from './lib/subrequest-budget'
 
-/** `symbols` クエリ（登録銘柄コード）を正準化して返す。0件可。 */
-function resolveRegistered(url: URL): string[] {
+/** 登録銘柄の上限。1回の再計算で取りにいく履歴の量を抑える */
+const MAX_REGISTERED = 40
+
+/**
+ * `symbols` クエリ（登録銘柄コード）を正準化して返す。0件可。
+ * 候補一覧は日本株専用（単元株・円表記・東証ランキング前提）なので、4桁コード以外は受け付けない。
+ */
+export function resolveRegistered(url: URL): string[] {
   const raw = (url.searchParams.get('symbols') ?? '').trim()
   if (!raw) return []
 
   const seen = new Set<string>()
   for (const value of raw.split(',')) {
     const code = canonicalCode(value)
-    if (code) seen.add(code)
+    if (/^\d{4}\.T$/.test(code)) seen.add(code)
   }
-  return [...seen].sort()
+  return [...seen].sort().slice(0, MAX_REGISTERED)
 }
 
 type ScoredCandidate = Omit<CandidateItem, 'rank'>
@@ -76,11 +82,7 @@ function capPerCategory(
  * 両方から取ることで、片方に偏らないようにする。
  * この時点では割安さは分からない（履歴がまだない）ため、判定は二次分析に任せる。
  */
-export function buildShortlist(
-  rows: RankingRow[],
-  registeredCodes: Set<string>,
-  limit = SHORTLIST_SIZE,
-): RankingRow[] {
+export function buildShortlist(rows: RankingRow[], limit = SHORTLIST_SIZE): RankingRow[] {
   const tradable = rows.filter((row) => row.close * row.volume >= MIN_TURNOVER_YEN)
   const declining = tradable.filter((row) => row.return1d < 0)
 
@@ -89,12 +91,10 @@ export function buildShortlist(
   )
   const byDecline = [...declining].sort((a, b) => a.return1d - b.return1d)
 
+  // 登録銘柄はここでは扱わない。ここに混ぜると、ランキングに載っていない登録銘柄を
+  // 拾えない（以前はこれで、今日大きく動いていない登録銘柄が一覧から消えていた）うえ、
+  // 登録内容が変わるたびに spark の取得単位（URL）が変わって Cache API が効かなくなる。
   const picked = new Map<string, RankingRow>()
-
-  // 登録銘柄は流動性・騰落にかかわらず必ず分析する
-  for (const row of rows) {
-    if (registeredCodes.has(row.code)) picked.set(row.code, row)
-  }
   for (const row of byTurnover.slice(0, SHORTLIST_BY_TURNOVER)) picked.set(row.code, row)
   for (const row of byDecline.slice(0, SHORTLIST_BY_DECLINE)) picked.set(row.code, row)
 
@@ -103,6 +103,21 @@ export function buildShortlist(
 
 function toEntry(row: RankingRow): CandidateEntry {
   return { code: row.code, name: row.name, segment: row.segment }
+}
+
+/**
+ * ランキングに載っていない登録銘柄の当日値を、株価履歴の末尾2本から求める。
+ *
+ * 登録銘柄の多くは「今日大きく下げた銘柄」でも「出来高上位」でもないため、
+ * ランキング表には出てこない。出来高はランキング表からしか取れないので 0（不明）とし、
+ * 画面では「—」と表示する。
+ */
+export function todayFromHistory(closes: number[]): CandidateToday | null {
+  const clean = closes.filter((value) => Number.isFinite(value) && value > 0)
+  if (clean.length < 2) return null
+  const close = clean[clean.length - 1]
+  const previous = clean[clean.length - 2]
+  return { close, return1d: close / previous - 1, volume: 0 }
 }
 
 /**
@@ -121,7 +136,20 @@ async function buildCandidates(
   // 一次選抜: ランキング HTML から当日の株価・騰落率・出来高まで取得する
   const universe = await fetchCandidateUniverse(budget, RANKING_DOWN_PAGES, RANKING_VOLUME_PAGES)
   const declining = universe.rows.filter((row) => row.return1d < 0)
-  const shortlist = buildShortlist(universe.rows, registeredSet)
+  const shortlist = buildShortlist(universe.rows)
+  const rowsByCode = new Map(universe.rows.map((row) => [row.code, row]))
+  const shortlistCodes = new Set(shortlist.map((row) => row.code))
+
+  // 登録銘柄の履歴は、一次選抜とは別の単位で、先に取得する。
+  // 別単位にするのは一次選抜側の取得URLを登録内容に左右されないようにして Cache API を効かせるため。
+  // 先に取るのは、subrequest 予算が足りないときに利用者が明示的に選んだ銘柄を落とさないため。
+  const registeredToFetch = registeredCodes.filter((code) => !shortlistCodes.has(code))
+  // 登録銘柄の取得に失敗しても一覧全体は返す（取れなかった銘柄は missingRegistered で知らせる）
+  const registeredSpark = await getSparkBatch(
+    registeredToFetch,
+    MARKET_DATA_CACHE_TTL_SECONDS,
+    budget,
+  ).catch(() => ({ closesBySymbol: new Map<string, number[]>(), partial: true }))
 
   // 二次分析: 絞り込んだ銘柄だけ株価履歴を取得する
   const spark = await getSparkBatch(
@@ -130,16 +158,30 @@ async function buildCandidates(
     budget,
   )
 
-  const scored = shortlist
-    .map((row) => {
-      const closes = spark.closesBySymbol.get(row.code)
-      if (!closes) return null
-      return computeCandidate({
-        entry: toEntry(row),
-        today: { close: row.close, return1d: row.return1d, volume: row.volume },
-        closes,
-      })
+  const fromShortlist = shortlist.map((row) => {
+    const closes = spark.closesBySymbol.get(row.code)
+    if (!closes) return null
+    return computeCandidate({
+      entry: toEntry(row),
+      today: { close: row.close, return1d: row.return1d, volume: row.volume },
+      closes,
     })
+  })
+
+  const fromRegistered = registeredToFetch.map((code) => {
+    const closes = registeredSpark.closesBySymbol.get(code)
+    if (!closes) return null
+    const row = rowsByCode.get(code)
+    // ランキングに載っていれば当日値はそちらを正とし、なければ履歴から求める
+    const today = row
+      ? { close: row.close, return1d: row.return1d, volume: row.volume }
+      : todayFromHistory(closes)
+    if (!today) return null
+    const entry: CandidateEntry = row ? toEntry(row) : { code, name: code, segment: 'その他' }
+    return computeCandidate({ entry, today, closes })
+  })
+
+  const scored = [...fromShortlist, ...fromRegistered]
     .filter((item): item is ScoredCandidate => item !== null)
     // 見送り（skip）は提案しない。ただし登録銘柄は常に残す。
     .filter((item) => item.category !== 'skip' || registeredSet.has(item.code))
@@ -157,12 +199,15 @@ async function buildCandidates(
     declining: declining.length,
     analyzed: spark.closesBySymbol.size,
     averageDecline,
-    partial: universe.partial || spark.partial,
+    partial: universe.partial || spark.partial || registeredSpark.partial,
   }
 
   return {
     generatedAt: new Date().toISOString(),
     registeredCount: registeredCodes.length,
+    missingRegistered: registeredCodes.filter(
+      (code) => !candidates.some((item) => item.code === code),
+    ),
     counts,
     summary,
     candidates,
@@ -211,8 +256,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { request, env, waitUntil } = context
 
   try {
-    await enforceRateLimit(env, '/api/candidates', getClientIp(request))
-
     const url = new URL(request.url)
     const registeredCodes = resolveRegistered(url)
     const cacheKey = registeredCodes.length > 0 ? registeredCodes.join(',') : 'default'
@@ -233,6 +276,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         return jsonResponse(cached.payload)
       }
     }
+
+    // レート制限は外部サイトへ取りにいく重い処理にだけかける。
+    // キャッシュから返せる要求にまでかけると、登録銘柄を続けて追加しただけで
+    // 1分8回の上限に達し、一覧がエラーになっていた。
+    await enforceRateLimit(env, '/api/candidates', getClientIp(request))
 
     const payload = await buildCandidates(registeredCodes, new SubrequestBudget())
     waitUntil(writeCache(env, cacheKey, payload))

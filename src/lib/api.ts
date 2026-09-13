@@ -259,6 +259,7 @@ const marketSegmentSchema = z.enum(['プライム', 'スタンダード', 'グ�
 const candidatesResponseSchema = z.object({
   generatedAt: z.string(),
   registeredCount: z.number(),
+  missingRegistered: z.array(z.string()).optional(),
   counts: z.object({
     buy: z.number(),
     watch: z.number(),

@@ -8,7 +8,7 @@ import type {
 } from './types'
 
 export const APP_NAME = '株式意思決定支援アプリ'
-export const CACHE_VERSION = 'cf-2026-09-v4'
+export const CACHE_VERSION = 'cf-2026-09-v5'
 export const FORECAST_HORIZON_DAYS = 5
 export const HISTORY_RANGE = '3y'
 export const WALK_FORWARD_FOLDS = 5

@@ -372,6 +372,8 @@ export interface MarketSummary {
 export interface CandidatesResponse {
   generatedAt: string
   registeredCount: number
+  /** 登録されているのに一覧に出せなかった銘柄（株価履歴を取得できなかった等） */
+  missingRegistered?: string[]
   counts: CandidateCounts
   summary: MarketSummary
   candidates: CandidateItem[]
