@@ -1581,3 +1581,12 @@ select {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
+
+/* くらしノートに埋め込んだとき（?embed=1）は見出しを省き、余白を詰める */
+.app-shell.embedded .hero-shell {
+  display: none;
+}
+
+.app-shell.embedded {
+  padding-top: 8px;
+}
